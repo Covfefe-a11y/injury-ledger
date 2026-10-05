@@ -1,0 +1,36 @@
+name: Build injury dataset
+on:
+  schedule:
+    - cron: "15 6 * * *"
+    - cron: "0 */3 * * 4-7"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: build-dataset
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Restore download cache
+        uses: actions/cache@v4
+        with:
+          path: cache
+          key: nflverse-cache-${{ github.run_id }}
+          restore-keys: nflverse-cache-
+      - run: python -m pip install -r injury-pipeline/requirements.txt
+      - name: Build dataset
+        run: python injury-pipeline/build_dataset.py --start 2016 --end 2026 --scoring half --out ./data --cache ./cache
+      - name: Publish app next to the data
+        run: cp fantasy-injury-tracker.html data/index.html
+      - name: Commit data
+        run: |
+          git config user.name "injury-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add data
+          git commit -m "data: refresh $(date -u +%F_%H:%M)" || echo "no changes"
+          git push
