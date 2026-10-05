@@ -449,7 +449,7 @@ function render(){
   document.getElementById('nav').innerHTML = VIEWS.map(([k,l])=>`<button role="tab" aria-selected="${state.view===k}" data-view="${k}">${l}</button>`).join('');
   const app = document.getElementById('app');
   const banner = DATA_SOURCE==='synthetic'
-    ? `<div class="banner"><strong>Prototype with synthetic sample data.</strong> Names, positions and Sleeper IDs are real; every injury event is generated for demonstration. Place a <code>dataset.json</code> from the nflverse pipeline next to this file to load real data. Current season: ${CURRENT_SEASON}, ${CURRENT_WEEK} weeks played.</div>`
+    ? `<div class="banner"><strong>Prototype with synthetic sample data.</strong> Names, positions and Sleeper IDs are real; every injury event is generated for demonstration. Place a <code>dataset.json</code> from the nflverse pipeline next to this file to load real data. Current season: ${CURRENT_SEASON}, ${CURRENT_WEEK} weeks played.${DATA_NOTE?` <span style="color:#7a1f1f">${esc(DATA_NOTE)}</span>`:''}</div>`
     : `<div class="banner" style="background:#e4f5ea;border-color:#b4dec3;color:#1f5a35"><strong>Live dataset loaded.</strong> ${esc(DATA_SOURCE)} · ${PLAYERS.length} players · season ${CURRENT_SEASON}, ${CURRENT_WEEK} weeks played.</div>`;
   app.innerHTML = banner + ({overview:viewOverview, compare:viewCompare, seasons:viewSeasons, league:viewLeague, data:viewData}[state.view])();
   bind();
@@ -836,15 +836,24 @@ function applyDataset(ds){
   state.seasonA = CURRENT_SEASON-1; state.seasonB = CURRENT_SEASON-2; state.season = String(CURRENT_SEASON);
   state.compare = state.compare.filter(id=>BY_ID[id]); if (!state.compare.length) state.compare = PLAYERS.slice().sort((a,b)=>aggregate(b,SEASONS).score-aggregate(a,SEASONS).score).slice(0,2).map(p=>p.id);
 }
+let DATA_NOTE = '';
 async function boot(){
   render();
-  const url = new URLSearchParams(location.search).get('data') || 'dataset.json';
-  try{
-    if (location.protocol==='file:' && !new URLSearchParams(location.search).get('data')) return; // browsers block fetch() of local files; use ?data= with a hosted URL or run a local server
-    const r = await fetch(url, {cache:'no-store'}); if (!r.ok) return;
-    const ds = await r.json(); if (!ds || !Array.isArray(ds.players)) return;
-    applyDataset(ds); render();
-  }catch(e){ /* no dataset available: keep sample data */ }
+  const param = new URLSearchParams(location.search).get('data');
+  if (location.protocol==='file:' && !param){ DATA_NOTE = 'Opened from disk: browsers block loading dataset.json from file://. Host the folder or add ?data=<url>.'; render(); return; }
+  const candidates = param ? [param] : ['dataset.json','data/dataset.json','../data/dataset.json'];
+  const tried = [];
+  for (const url of candidates){
+    try{
+      const r = await fetch(url, {cache:'no-store'});
+      if (!r.ok){ tried.push(url+' → HTTP '+r.status); continue; }
+      const ds = await r.json();
+      if (!ds || !Array.isArray(ds.players)){ tried.push(url+' → not a dataset'); continue; }
+      try { applyDataset(ds); } catch(e){ DATA_NOTE = 'dataset.json found at '+url+' but could not be applied: '+(e && e.message || e); render(); return; }
+      render(); return;
+    }catch(e){ tried.push(url+' → '+(e && e.message || e)); }
+  }
+  DATA_NOTE = 'No dataset found ('+tried.join('; ')+').'; render();
 }
 boot();
 </script>
