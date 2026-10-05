@@ -76,6 +76,7 @@
   .strip i{display:block;width:9px;height:16px;border-radius:2px;background:var(--fut)}
   .strip i.H{background:var(--h)}.strip i.Q{background:var(--q)}.strip i.D{background:var(--d)}.strip i.O{background:var(--o)}.strip i.IR{background:var(--ir)}.strip i.BYE{background:var(--bye)}
   .strip i.FUT{background:repeating-linear-gradient(135deg,#e5e8ec 0 2px,#f6f7f9 2px 4px)}
+  .strip i.exit{background:linear-gradient(135deg,var(--h) 50%,var(--o) 50%);outline:1px solid var(--o);outline-offset:-1px}.strip i.Q.exit{background:linear-gradient(135deg,var(--q) 50%,var(--o) 50%)}
   .strip i.dim{opacity:.22}.strip i.DNP{background:#8e98a3}.strip i.NR,.strip i.SUS{background:transparent;border:1px dashed #b5bcc4}
   .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:8px 0 0}
   .legend span i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
@@ -138,7 +139,7 @@ let CURRENT_SEASON = 2026;
 let CURRENT_WEEK = 4;              // completed weeks in the current season
 let SEASONS = []; for (let y = 2016; y <= CURRENT_SEASON; y++) SEASONS.push(y);
 let DATA_SOURCE = 'synthetic';
-const EXCLUDED = new Set(['BYE','FUT','NR','SUS']); // not counted as possible games
+const EXCLUDED = new Set(['BYE','FUT','NR','SUS','DNP']); // not counted as possible games (DNP = did not play for a non-injury reason)
 const POS_BASE_PPG = { QB: 19, RB: 14, WR: 13, TE: 9.5 };
 
 // [sleeperId, name, pos, team, rookieYear, proneness, shapingNotes]
@@ -278,6 +279,7 @@ function summarize(s){
   s.injCount = s.injuries.filter(i=>i.week <= (s.season===CURRENT_SEASON?CURRENT_WEEK:99)).length;
   s.hadIR = listed.IR>0;
   s.gamesPossible = counted.length;
+  s.earlyExits = s.weeks.filter(w=>w.exit).length;
   return s;
 }
 
@@ -292,7 +294,7 @@ function buildDataset(){
     SEASONS.forEach(y=>{ const s=p.seasons[y]; if(!s) return;
       let r = base + (rng()-0.5)*14 + (y===rookie?22:0) + (p.seasons[y-1]&&p.seasons[y-1].gm>=6?15:0);
       r = Math.max(1, Math.round(r));
-      s.adp = {pick: +(r + (rng()-0.5)*2).toFixed(1), rank: r, posRank: null, drafts: 800, period:'JULY', source:'synthetic'}; });
+      s.adp = {pick: +(r + (rng()-0.5)*2).toFixed(1), rank: r, posRank: null, drafts: 800, period:'JULY', source:'synthetic', expPpg: +(s.ppg*(0.85+rng()*0.3)).toFixed(2)}; });
     // current designation = status that was generated for the upcoming week
     const cur = p.seasons[CURRENT_SEASON];
     const nxt = cur && cur.weeks[CURRENT_WEEK] && cur.weeks[CURRENT_WEEK].next;
@@ -304,18 +306,24 @@ function buildDataset(){
 
 let PLAYERS = buildDataset();
 (function normalizeSyntheticAdp(){ SEASONS.forEach(y=>{ const ps = PLAYERS.filter(p=>p.seasons[y]&&p.seasons[y].adp).sort((a,b)=>a.seasons[y].adp.pick-b.seasons[y].adp.pick); const pc={};
-  ps.forEach((p,i)=>{ const a=p.seasons[y].adp; a.rank=i+1; pc[p.pos]=(pc[p.pos]||0)+1; a.posRank=p.pos+pc[p.pos]; }); }); })();
+  ps.forEach((p,i)=>{ const a=p.seasons[y].adp; a.rank=i+1; pc[p.pos]=(pc[p.pos]||0)+1; a.posRank=p.pos+pc[p.pos]; a.format='synthetic 1QB'; p.seasons[y].adp1qb=a; });
+  // synthetic Superflex ADP: QBs move up roughly two rounds, everyone else slides
+  const sf = ps.map(p=>({p, pick: p.seasons[y].adp.pick * (p.pos==='QB' ? 0.35 : 1.08)})).sort((a,b)=>a.pick-b.pick); const pc2={};
+  sf.forEach((x,i)=>{ pc2[x.p.pos]=(pc2[x.p.pos]||0)+1; const a1=x.p.seasons[y].adp1qb; x.p.seasons[y].adpSf={pick:+x.pick.toFixed(1), rank:i+1, posRank:x.p.pos+pc2[x.p.pos], drafts:800, source:'synthetic', format:'synthetic 2QB', expPpg:a1.expPpg}; }); });
+  // synthetic in-game exits: the game before an injury spell, for about a third of injury events
+  PLAYERS.forEach(p=>{ const rng=mulberry32(parseInt(p.id,10)*31+5); Object.values(p.seasons).forEach(s=>s.injuries.forEach(e=>{ const prev=s.weeks[e.week-2]; if(prev&&prev.played&&!prev.exit&&rng()<0.35){ prev.exit=true; prev.snap=+(0.1+rng()*0.3).toFixed(2); prev.usual=+(0.75+rng()*0.2).toFixed(2); prev.exitInj=e.type; e.inGame=true; e.exitWk=prev.wk; } })); Object.values(p.seasons).forEach(summarize); });
+})();
 let BY_ID = Object.fromEntries(PLAYERS.map(p=>[p.id,p]));
 const ADP_TIERS = [['all','All'],['12','Top 12'],['24','Top 24'],['50','Top 50'],['100','Top 100']];
 
 /* ---------- metrics / scoring ---------- */
 const state = {
-  view:'overview', season:String(CURRENT_SEASON), pos:'ALL', q:'', sort:{key:'score',dir:-1},
+  view:'overview', season:String(CURRENT_SEASON), pos:'ALL', q:'', sort:{key:'adp',dir:1},
   compare:['4034','4988'],
   seasonA:2025, seasonB:2024,
   league:null, leagueScope:'career3', leagueMsg:null, expanded:null, leagueId:'',
   weights:{gm:1, wk:1, pts:1},
-  adpTop:'all', wkFrom:1, wkTo:18, beta:1.2, leagueRank:'load',
+  adpTop:'all', adpFmt:'1qb', hasSf:true, wkFrom:1, wkTo:18, beta:1.2, leagueRank:'load', ptsBasis:'realized', hasExpPpg:true, // synthetic sample carries expPpg; applyDataset re-detects
   busy:false,
 };
 
@@ -326,13 +334,14 @@ function seasonsForScope(scope){
   return [parseInt(scope,10)];
 }
 const MAX_WEEKS = 18;
+let ADP_META = null;
 const _mcache = new WeakMap();
 function weekRangeActive(){ return state.wkFrom>1 || state.wkTo<MAX_WEEKS; }
 function M(s){
   // season metrics restricted to the selected week window (state.wkFrom..state.wkTo)
   if (!s) return s;
   if (!weekRangeActive()) return s;
-  const key = state.wkFrom+'-'+state.wkTo;
+  const key = state.wkFrom+'-'+state.wkTo+'-'+state.adpFmt;
   let c = _mcache.get(s); if (c && c.key===key) return c.val;
   const weeks = s.weeks.filter(w=>w.wk>=state.wkFrom && w.wk<=state.wkTo);
   const counted = weeks.filter(w=>!EXCLUDED.has(w.status));
@@ -342,7 +351,7 @@ function M(s){
   const injuries = s.injuries.filter(i=>i.week>=state.wkFrom && i.week<=Math.min(state.wkTo,lim));
   const val = {...s, gp, gm, listed, listedTotal: listed.Q+listed.D+listed.O+listed.IR,
     listedWeighted: listed.Q*0.25+listed.D*0.5+listed.O+listed.IR, ptsLost: +(gm*s.ppg).toFixed(1),
-    injCount: injuries.length, injuries, hadIR: listed.IR>0, gamesPossible: counted.length};
+    injCount: injuries.length, injuries, hadIR: listed.IR>0, gamesPossible: counted.length, earlyExits: weeks.filter(w=>w.exit).length};
   _mcache.set(s,{key,val}); return val;
 }
 function weekControl(){
@@ -368,17 +377,21 @@ function seasonIndexTable(){
   rows.forEach(r=>{ r.index = baseline && r.rate!==null ? r.rate/baseline*100 : null; });
   return {rows, baseline};
 }
+// points-lost basis: realized PPG of that season, or the PPG the market expected at his ADP (fitted in the pipeline)
+function ppgOf(s){ return state.ptsBasis==='adp' && s.adp && s.adp.expPpg ? s.adp.expPpg : s.ppg; }
+function PL(s){ return s ? +((s.gm||0) * (ppgOf(s)||0)).toFixed(1) : 0; }
+function ptsLabel(){ return state.ptsBasis==='adp' ? 'Pts lost (ADP exp.)' : 'Pts lost'; }
 function adpOk(s, top){ if (!top || top==='all') return true; return !!(s && s.adp && s.adp.rank <= +top); }
 function aggregate(p, seasons, top){
   top = top===undefined ? state.adpTop : top;
-  const agg = {gp:0,gm:0,listed:{Q:0,D:0,O:0,IR:0},listedWeighted:0,ptsLost:0,injCount:0,seasonsPlayed:0,gamesPossible:0,irSeasons:0,injuries:[],bestAdp:null,dcPoss:0,dcLost:0,dcRate:null};
+  const agg = {gp:0,gm:0,listed:{Q:0,D:0,O:0,IR:0},listedWeighted:0,ptsLost:0,injCount:0,exits:0,seasonsPlayed:0,gamesPossible:0,irSeasons:0,injuries:[],bestAdp:null,dcPoss:0,dcLost:0,dcRate:null};
   seasons.forEach(y=>{
     const s = M(p.seasons[y]); if(!s || !adpOk(s, top)) return;
     if (s.adp && (agg.bestAdp===null || s.adp.rank<agg.bestAdp)) agg.bestAdp = s.adp.rank;
     if (s.adp){ const w=dcWeight(s.adp.rank); agg.dcPoss+=w*s.gamesPossible; agg.dcLost+=w*s.gm; }
     agg.seasonsPlayed++; agg.gp+=s.gp; agg.gm+=s.gm; agg.gamesPossible+=s.gamesPossible;
     ['Q','D','O','IR'].forEach(k=>agg.listed[k]+=s.listed[k]);
-    agg.listedWeighted+=s.listedWeighted; agg.ptsLost+=s.ptsLost; agg.injCount+=s.injCount; if(s.hadIR) agg.irSeasons++;
+    agg.listedWeighted+=s.listedWeighted; agg.ptsLost+=PL(s); agg.injCount+=s.injCount; agg.exits+=(s.earlyExits||0); if(s.hadIR) agg.irSeasons++;
     s.injuries.forEach(i=>agg.injuries.push({...i,season:y}));
   });
   agg.listedTotal = agg.listed.Q+agg.listed.D+agg.listed.O+agg.listed.IR;
@@ -388,7 +401,7 @@ function aggregate(p, seasons, top){
   agg.score = score(agg);
   return agg;
 }
-function score(a){ const w = state.weights; return +(w.gm*a.gm + w.wk*a.listedWeighted + w.pts*a.ptsLost/10).toFixed(1); }
+function score(a){ const w = state.weights; const pts = a.seasonsPlayed!==undefined ? a.ptsLost : PL(a); return +(w.gm*a.gm + w.wk*a.listedWeighted + w.pts*pts/10).toFixed(1); }
 
 /* ---------- helpers ---------- */
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -397,19 +410,21 @@ const pct = n => Math.round(n*100)+'%';
 function stripHTML(s){
   if (!s) return '<span class="muted small">—</span>';
   return '<span class="strip" aria-label="Weekly availability">' + s.weeks.map(w=>{
-    const t = w.status==='BYE' ? `Wk ${w.wk}: bye` : w.status==='FUT' ? `Wk ${w.wk}: upcoming` : w.status==='NR' ? `Wk ${w.wk}: not rostered` : w.status==='SUS' ? `Wk ${w.wk}: suspended / exempt` : w.status==='DNP' ? `Wk ${w.wk}: did not play (no report entry)` : `Wk ${w.wk}: ${w.status==='H'?'healthy':w.status+(w.inj?' · '+w.inj:'')}${w.played?'':' · DNP'}`;
+    const t = w.status==='BYE' ? `Wk ${w.wk}: bye` : w.status==='FUT' ? `Wk ${w.wk}: upcoming` : w.status==='NR' ? `Wk ${w.wk}: not rostered` : w.status==='SUS' ? `Wk ${w.wk}: suspended / exempt` : w.status==='DNP' ? `Wk ${w.wk}: did not play - not injury related (healthy scratch / benching), not counted` : `Wk ${w.wk}: ${w.status==='H'?'healthy':({Q:'Questionable',D:'Doubtful',O:'Out',IR:'IR'}[w.status]||w.status)+(w.desig&&w.desig!==w.status?' (listed '+({Q:'Questionable',D:'Doubtful',O:'Out'}[w.desig]||w.desig)+')':'')+(w.inj?' · '+w.inj:'')}${w.played?' · played':' · did not play'}${w.exit?` · LEFT EARLY: ${Math.round((w.snap||0)*100)}% of snaps vs. usual ${Math.round((w.usual||0)*100)}%${w.exitInj?', then '+w.exitInj:''}`:(w.snap!=null?` · ${Math.round(w.snap*100)}% snaps`:'')}`;
     const dim = weekRangeActive() && (w.wk<state.wkFrom || w.wk>state.wkTo) ? ' dim' : '';
-    return `<i class="${w.status}${dim}" title="${esc(t)}"></i>`;
+    return `<i class="${w.status}${w.exit?' exit':''}${dim}" title="${esc(t)}"></i>`;
   }).join('') + '</span>';
 }
 function pill(st){ const l = {H:'Healthy',Q:'Questionable',D:'Doubtful',O:'Out',IR:'IR'}[st]||st; return `<span class="pill ${st}">${l}</span>`; }
-function legend(){ return `<div class="legend"><span><i style="background:var(--h)"></i>Played</span><span><i style="background:var(--q)"></i>Questionable</span><span><i style="background:var(--d)"></i>Doubtful</span><span><i style="background:var(--o)"></i>Out</span><span><i style="background:var(--ir)"></i>IR</span><span><i style="background:var(--bye)"></i>Bye</span><span><i style="background:var(--fut)"></i>Upcoming</span><span><i style="background:#8e98a3"></i>DNP (no report)</span><span><i style="border:1px dashed #b5bcc4"></i>Not rostered / suspended</span></div>`; }
+function legend(){ return `<div class="legend"><span><i style="background:var(--h)"></i>Played</span><span><i style="background:var(--q)"></i>Questionable</span><span><i style="background:var(--d)"></i>Doubtful</span><span><i style="background:var(--o)"></i>Out</span><span><i style="background:var(--ir)"></i>IR</span><span><i style="background:linear-gradient(135deg,var(--h) 50%,var(--o) 50%)"></i>Played but left hurt</span><span><i style="background:var(--bye)"></i>Bye</span><span><i style="background:var(--fut)"></i>Upcoming</span><span><i style="background:#8e98a3"></i>DNP, not injury-related (not counted)</span><span><i style="border:1px dashed #b5bcc4"></i>Not rostered / suspended</span></div>`; }
 function injSummary(injuries, max=3){
   if (!injuries.length) return '<span class="muted">none</span>';
   const parts = injuries.slice(0,max).map(i=>`${i.season?i.season+' ':''}Wk${i.week} ${esc(i.type)}${i.missed?` (−${i.missed})`:''}`);
   return parts.join(' · ') + (injuries.length>max?` <span class="muted">+${injuries.length-max}</span>`:'');
 }
-function adpControl(){ return `<div class="field"><label>Preseason ADP</label><div class="seg" role="group" aria-label="ADP filter">${ADP_TIERS.map(([k,l])=>`<button data-adp="${k}" aria-pressed="${state.adpTop===k}">${l}</button>`).join('')}</div></div>`; }
+function adpControl(){ return `<div class="field"><label>Preseason ADP</label><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><div class="seg" role="group" aria-label="ADP format"><button data-adpfmt="1qb" aria-pressed="${state.adpFmt==='1qb'}" title="1-QB leagues (ADP format matched to the dataset's scoring)">1QB</button><button data-adpfmt="sf" aria-pressed="${state.adpFmt==='sf'}" ${state.hasSf?'':'disabled title="dataset has no Superflex/2QB ADP - rebuild with the latest pipeline"'} title="Superflex / 2-QB leagues (FFC 2QB ADP)">SF</button></div><div class="seg" role="group" aria-label="ADP filter">${ADP_TIERS.map(([k,l])=>`<button data-adp="${k}" aria-pressed="${state.adpTop===k}">${l}</button>`).join('')}</div></div></div>`; }
+function adpFmtLabel(){ return state.adpFmt==='sf' ? 'Superflex' : '1QB'; }
+function applyAdpFmt(){ PLAYERS.forEach(p=>Object.values(p.seasons).forEach(s=>{ s.adp = state.adpFmt==='sf' ? (s.adpSf||null) : (s.adp1qb||null); })); }
 function adpCell(s){ return s && s.adp ? `<span class="num">${s.adp.rank}</span> <span class="muted small">(${fmt1(s.adp.pick)}${s.adp.posRank?' · '+s.adp.posRank:''})</span>` : '<span class="muted">—</span>'; }
 function adpNote(){ return state.adpTop==='all' ? '' : ` Only player-seasons with a preseason ADP inside the top ${state.adpTop} (overall, drafts before preseason game 1) are counted - so the numbers answer "how much did top-${state.adpTop} picks miss".`; }
 function sortArrow(key){ return state.sort.key===key ? `<span class="arrow">${state.sort.dir<0?'▼':'▲'}</span>` : ''; }
@@ -461,8 +476,8 @@ function viewOverview(){
   const scopeLabel = state.season==='career' ? 'career' : state.season==='career3' ? 'last 3 seasons' : state.season==='career5' ? 'last 5 seasons' : state.season;
   let rows = PLAYERS.filter(p=> (state.pos==='ALL'||p.pos===state.pos) && (!state.q || p.name.toLowerCase().includes(state.q.toLowerCase()) || p.team.toLowerCase()===state.q.toLowerCase()))
     .map(p=>({p, a:aggregate(p,seasons)})).filter(r=>r.a.seasonsPlayed>0);
-  rows = sortRows(rows, {name:r=>r.p.name, pos:r=>r.p.pos, adp:r=>single?(r.p.seasons[seasons[0]].adp?r.p.seasons[seasons[0]].adp.rank:9999):(r.a.bestAdp||9999), gm:r=>r.a.gm, gp:r=>r.a.gp, listed:r=>r.a.listedTotal, pts:r=>r.a.ptsLost, inj:r=>r.a.injCount, score:r=>r.a.score, avail:r=>r.a.availability, dc:r=>r.a.dcLost});
   const single = seasons.length===1;
+  rows = sortRows(rows, {name:r=>r.p.name, pos:r=>r.p.pos, adp:r=>single?(r.p.seasons[seasons[0]].adp?r.p.seasons[seasons[0]].adp.rank:9999):(r.a.bestAdp||9999), gm:r=>r.a.gm, gp:r=>r.a.gp, listed:r=>r.a.listedTotal, pts:r=>r.a.ptsLost, inj:r=>r.a.injCount, exits:r=>r.a.exits, score:r=>r.a.score, avail:r=>r.a.availability, dc:r=>r.a.dcLost});
   const tot = rows.reduce((t,r)=>{t.gm+=r.a.gm;t.pts+=r.a.ptsLost;t.ir+=r.a.listed.IR;t.cur+= (r.p.current.status!=='H'?1:0);return t},{gm:0,pts:0,ir:0,cur:0});
   const maxScore = Math.max(1,...rows.map(r=>r.a.score));
   return `
@@ -476,7 +491,7 @@ function viewOverview(){
   <div class="cards">
     <div class="card kpi"><div class="lbl">Players tracked</div><div class="val">${rows.length}</div><div class="delta">${scopeLabel}${state.adpTop!=='all'?' · ADP top '+state.adpTop:''}</div></div>
     <div class="card kpi"><div class="lbl">Games missed</div><div class="val">${tot.gm}</div><div class="delta">${rows.length?fmt1(tot.gm/rows.length):0} per player</div></div>
-    <div class="card kpi"><div class="lbl">Fantasy pts lost</div><div class="val">${Math.round(tot.pts).toLocaleString()}</div><div class="delta">at each player's PPG</div></div>
+    <div class="card kpi"><div class="lbl">${state.ptsBasis==='adp'?'Expected pts lost (ADP)':'Fantasy pts lost'}</div><div class="val">${Math.round(tot.pts).toLocaleString()}</div><div class="delta">at each player's PPG</div></div>
     <div class="card kpi"><div class="lbl">IR weeks</div><div class="val">${tot.ir}</div><div class="delta">across the scope</div></div>
     <div class="card kpi"><div class="lbl">Currently flagged</div><div class="val">${tot.cur}</div><div class="delta">Week ${CURRENT_WEEK+1} designations</div></div>
   </div>
@@ -485,14 +500,15 @@ function viewOverview(){
       <th class="rank">#</th>
       <th class="sortable" data-sort="name">Player${sortArrow('name')}</th>
       <th class="sortable" data-sort="pos">Pos${sortArrow('pos')}</th>
-      <th class="sortable" data-sort="adp" title="Preseason ADP: overall rank (avg pick · position rank)">${single?'ADP':'Best ADP'}${sortArrow('adp')}</th>
+      <th class="sortable" data-sort="adp" title="Preseason ADP (${adpFmtLabel()}): overall rank (avg pick · position rank)">${single?'ADP':'Best ADP'} <span class="muted small">${adpFmtLabel()}</span>${sortArrow('adp')}</th>
       <th>Now</th>
       <th>${single?'Availability by week':'Avg availability'}</th>
       <th class="r sortable" data-sort="gm">GM${sortArrow('gm')}</th>
       <th class="r sortable" data-sort="gp">GP${sortArrow('gp')}</th>
       <th class="r sortable" data-sort="listed">Q / D / O / IR${sortArrow('listed')}</th>
-      <th class="r sortable" data-sort="pts">Pts lost${sortArrow('pts')}</th>
+      <th class="r sortable" data-sort="pts" title="${state.ptsBasis==='adp'?'games missed x PPG expected at his preseason ADP (log-linear fit per season and position)':'games missed x realized PPG of that season'}">${ptsLabel()}${sortArrow('pts')}</th>
       <th class="r sortable" data-sort="inj">Injuries${sortArrow('inj')}</th>
+      <th class="r sortable" data-sort="exits" title="Games the player started but left hurt: snap share collapsed to under half his usual share and he was on the injury report / out the following game (heuristic from nflverse snap counts)">Left hurt${sortArrow('exits')}</th>
       <th class="r sortable" data-sort="score">Injury load${sortArrow('score')}</th>
       <th class="r sortable" data-sort="dc" title="Draft capital lost = pick weight x games missed (in '1.01-games'); the share is the capital-weighted miss rate">DC lost${sortArrow('dc')}</th>
     </tr></thead>
@@ -507,12 +523,13 @@ function viewOverview(){
       <td class="r num">${r.a.listed.Q} / ${r.a.listed.D} / ${r.a.listed.O} / ${r.a.listed.IR}</td>
       <td class="r num">${fmt1(r.a.ptsLost)}</td>
       <td class="r num" title="${esc(injSummary(r.a.injuries,6).replace(/<[^>]+>/g,''))}">${r.a.injCount}</td>
+      <td class="r num">${r.a.exits||'<span class="muted">—</span>'}</td>
       <td class="r"><div class="scorecell"><div class="bar"><i style="width:${pct(r.a.score/maxScore)}"></i></div><span class="num">${fmt1(r.a.score)}</span></div></td>
       <td class="r num">${r.a.dcPoss ? fmt1(r.a.dcLost)+' <span class="muted small">'+pct(r.a.dcRate)+'</span>' : '<span class="muted">—</span>'}</td>
-    </tr>`).join('') || `<tr><td colspan="13" class="empty">No players match${state.adpTop!=='all'?' the top-'+state.adpTop+' ADP filter in this scope':''}.</td></tr>`}</tbody>
+    </tr>`).join('') || `<tr><td colspan="14" class="empty">No players match${state.adpTop!=='all'?' the top-'+state.adpTop+' ADP filter in this scope':''}.</td></tr>`}</tbody>
   </table></div>
   ${legend()}
-  <p class="footer-note">GM = games missed, GP = games played (bye weeks excluded). Injury load = ${state.weights.gm}×GM + ${state.weights.wk}×weighted listed weeks (Q 0.25 · D 0.5 · O 1 · IR 1) + ${state.weights.pts}×points lost ÷ 10. DC lost = draft-capital weight of the pick × games missed (a 1.01 missing a full season ≈ 17; a pick 100 missing it ≈ 1.2) - see “Data &amp; import”.${adpNote()}${weekNote()} Click a row to open the player in the comparison view.</p>`;
+  <p class="footer-note">GM = injury-related games missed (did not play while Out / Doubtful / Questionable / on IR), GP = games played. Byes, suspensions, unsigned weeks and non-injury DNPs (healthy scratch, benching) are excluded from both. A week shows the final game status: a player listed Doubtful who then sat counts as Out; the Friday tag is in the tooltip. Injury load = ${state.weights.gm}×GM + ${state.weights.wk}×weighted listed weeks (Q 0.25 · D 0.5 · O 1 · IR 1) + ${state.weights.pts}×points lost ÷ 10. DC lost = draft-capital weight of the pick × games missed (a 1.01 missing a full season ≈ 17; a pick 100 missing it ≈ 1.2) - see “Data &amp; import”.${adpNote()}${weekNote()} “Left hurt” counts games he played but left early with an injury (in-game exits), detected from snap counts. Lists are sorted by ${adpFmtLabel()} ADP by default; click any header to re-sort. Click a row to open the player in the comparison view.</p>`;
 }
 
 /* ---- Player comparison ---- */
@@ -535,7 +552,7 @@ function viewCompare(){
   <tbody>${careers.map(({p,a},i)=>`<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${PALETTE[i]};margin-right:6px"></span><strong>${esc(p.name)}</strong> <span class="pos ${p.pos}">${p.pos}</span></td><td class="r num">${a.seasonsPlayed}</td><td class="r num">${a.gp}</td><td class="r num">${a.gm}</td><td class="r num">${pct(a.availability)}</td><td class="r num">${a.listed.Q} / ${a.listed.D} / ${a.listed.O} / ${a.listed.IR}</td><td class="r num">${a.injCount}</td><td class="r num">${a.irSeasons}</td><td class="r num">${fmt1(a.ptsLost)}</td><td class="r num">${fmt1(a.score)}</td><td class="r num">${fmt1(a.score/Math.max(1,a.seasonsPlayed))}</td></tr>`).join('')}</tbody></table></div>
   <h2>Season-by-season timeline</h2>
   <div class="${sel.length===1?'':'grid2'}">${sel.map((p,i)=>`<div class="card"><h3 style="color:${PALETTE[i]}">${esc(p.name)} · ${p.pos} · ${p.team}</h3>
-    ${SEASONS.slice().reverse().map(y=>{const s=M(p.seasons[y]); if(!s) return ''; return `<div class="season-row"><span class="yr">${y}</span><span>${stripHTML(s)}</span><span class="meta" title="preseason ADP · games missed · weeks listed · points lost">${s.adp?`ADP ${s.adp.rank} · `:''}${s.gm} GM · ${s.listedTotal} wk · ${fmt1(s.ptsLost)} pts</span></div>`;}).join('')}
+    ${SEASONS.slice().reverse().map(y=>{const s=M(p.seasons[y]); if(!s) return ''; return `<div class="season-row"><span class="yr">${y}</span><span>${stripHTML(s)}</span><span class="meta" title="preseason ADP · games missed · weeks listed · points lost">${s.adp?`ADP ${s.adp.rank} · `:''}${s.gm} GM · ${s.listedTotal} wk · ${fmt1(PL(s))} pts</span></div>`;}).join('')}
     <details style="margin-top:8px"><summary class="small">Injury log (${aggregate(p,SEASONS).injCount})</summary><ul class="small muted" style="margin:6px 0 0;padding-left:18px">${aggregate(p,SEASONS).injuries.filter(x=>!(x.season===CURRENT_SEASON&&x.week>CURRENT_WEEK)).map(x=>`<li>${x.season} Wk ${x.week}: ${esc(x.type)} — ${x.sev==='major'?'IR / long-term':x.sev==='mod'?'multi-week':'minor'}, missed ${x.missed}, listed ${x.listed} wk</li>`).join('')}</ul></details>
   </div>`).join('')}</div>
   ${legend()}` : '<div class="card empty">Add a player to start comparing.</div>'}`;
@@ -547,8 +564,8 @@ function viewSeasons(){
   const stat = y => {
     const ps = PLAYERS.filter(p=>p.seasons[y] && adpOk(p.seasons[y], state.adpTop));
     const r = {n:ps.length, gm:0, pts:0, ir:0, listed:0, byPos:{}, top:[]};
-    ps.forEach(p=>{const s=M(p.seasons[y]); r.gm+=s.gm; r.pts+=s.ptsLost; r.ir+=s.hadIR?1:0; r.listed+=s.listedTotal;
-      const bp = r.byPos[p.pos] = r.byPos[p.pos]||{n:0,gm:0,pts:0,ir:0}; bp.n++; bp.gm+=s.gm; bp.pts+=s.ptsLost; bp.ir+=s.hadIR?1:0;
+    ps.forEach(p=>{const s=M(p.seasons[y]); r.gm+=s.gm; r.pts+=PL(s); r.ir+=s.hadIR?1:0; r.listed+=s.listedTotal;
+      const bp = r.byPos[p.pos] = r.byPos[p.pos]||{n:0,gm:0,pts:0,ir:0}; bp.n++; bp.gm+=s.gm; bp.pts+=PL(s); bp.ir+=s.hadIR?1:0;
       r.top.push({p, s, score:score(s)});});
     r.top.sort((a,b)=>b.score-a.score);
     return r;
@@ -576,7 +593,7 @@ function viewSeasons(){
     <div class="card kpi"><div class="lbl">GM per player · ${A}</div><div class="val">${fmt1(a.gm/Math.max(1,a.n))}</div>${d(+(a.gm/Math.max(1,a.n)).toFixed(1),+(b.gm/Math.max(1,b.n)).toFixed(1))}</div>
     <div class="card kpi"><div class="lbl">Players with IR stint · ${A}</div><div class="val">${a.ir}<span class="muted" style="font-size:14px">/${a.n}</span></div>${d(a.ir,b.ir)}</div>
     <div class="card kpi"><div class="lbl">Weeks on report · ${A}</div><div class="val">${a.listed}</div>${d(a.listed,b.listed)}</div>
-    <div class="card kpi"><div class="lbl">Fantasy pts lost · ${A}</div><div class="val">${Math.round(a.pts).toLocaleString()}</div>${d(Math.round(a.pts),Math.round(b.pts))}</div>
+    <div class="card kpi"><div class="lbl">${state.ptsBasis==='adp'?'Exp. pts lost (ADP)':'Fantasy pts lost'} · ${A}</div><div class="val">${Math.round(a.pts).toLocaleString()}</div>${d(Math.round(a.pts),Math.round(b.pts))}</div>
     <div class="card kpi" style="border-color:var(--accent)"><div class="lbl">Injury Index · ${A}</div><div class="val">${siA&&siA.index!==null?Math.round(siA.index):'—'}</div><div class="delta ${siA&&siB&&siA.rate>siB.rate?'up':siA&&siB&&siA.rate<siB.rate?'down':''}">${siA&&siB&&siA.rate!==null&&siB.rate!==null?`${fmt1(siA.rate*100)}% vs ${fmt1(siB.rate*100)}% capital sidelined (${B})`:'needs ADP data'}</div></div>
   </div>
   <div class="card" style="margin-bottom:14px"><h3>Season Injury Index · draft-capital-weighted miss rate (100 = average of completed seasons)</h3>
@@ -596,8 +613,8 @@ function viewSeasons(){
     ${[[A,a],[B,b]].map(([y,r])=>`<div class="card"><h3>Most injury-ridden · ${y}</h3>${r.top.slice(0,8).map((t,i)=>`<div class="season-row"><span class="yr">${i+1}.</span><span><strong>${esc(t.p.name)}</strong> <span class="pos ${t.p.pos}">${t.p.pos}</span>${t.s.adp?` <span class="muted small">ADP ${t.s.adp.rank}</span>`:''}<br>${stripHTML(t.s)}</span><span class="meta">${t.s.gm} GM · ${fmt1(t.score)} load</span></div>`).join('')}</div>`).join('')}
   </div>
   <h2>Player deltas ${A} vs ${B}</h2>${state.adpTop!=='all'?`<p class="small muted" style="margin:-4px 0 8px">Players inside the top ${state.adpTop} by ADP in <em>both</em> seasons.</p>`:''}
-  <div class="tablewrap"><table><thead><tr><th>Player</th><th>Pos</th><th class="r">ADP ${A}</th><th class="r">ADP ${B}</th><th class="r">GM ${A}</th><th class="r">GM ${B}</th><th class="r">Δ GM</th><th class="r">Pts lost ${A}</th><th class="r">Pts lost ${B}</th><th class="r">Load ${A}</th><th class="r">Load ${B}</th><th class="r">Δ Load</th></tr></thead>
-  <tbody>${PLAYERS.filter(p=>p.seasons[A]&&p.seasons[B]&&adpOk(p.seasons[A],state.adpTop)&&adpOk(p.seasons[B],state.adpTop)).map(p=>({p,sa:M(p.seasons[A]),sb:M(p.seasons[B])})).map(r=>({...r,dl:score(r.sa)-score(r.sb)})).sort((x,y)=>y.dl-x.dl).map(r=>`<tr><td><strong>${esc(r.p.name)}</strong></td><td><span class="pos ${r.p.pos}">${r.p.pos}</span></td><td class="r num">${r.sa.adp?r.sa.adp.rank:'—'}</td><td class="r num">${r.sb.adp?r.sb.adp.rank:'—'}</td><td class="r num">${r.sa.gm}</td><td class="r num">${r.sb.gm}</td><td class="r num ${r.sa.gm-r.sb.gm>0?'delta up':r.sa.gm-r.sb.gm<0?'delta down':''}">${r.sa.gm-r.sb.gm>0?'+':''}${r.sa.gm-r.sb.gm}</td><td class="r num">${fmt1(r.sa.ptsLost)}</td><td class="r num">${fmt1(r.sb.ptsLost)}</td><td class="r num">${fmt1(score(r.sa))}</td><td class="r num">${fmt1(score(r.sb))}</td><td class="r num ${r.dl>0?'delta up':r.dl<0?'delta down':''}">${r.dl>0?'+':''}${fmt1(r.dl)}</td></tr>`).join('')}</tbody></table></div>`;
+  <div class="tablewrap"><table><thead><tr><th>Player</th><th>Pos</th><th class="r">ADP ${A}</th><th class="r">ADP ${B}</th><th class="r">GM ${A}</th><th class="r">GM ${B}</th><th class="r">Δ GM</th><th class="r">${ptsLabel()} ${A}</th><th class="r">${ptsLabel()} ${B}</th><th class="r">Load ${A}</th><th class="r">Load ${B}</th><th class="r">Δ Load</th></tr></thead>
+  <tbody>${PLAYERS.filter(p=>p.seasons[A]&&p.seasons[B]&&adpOk(p.seasons[A],state.adpTop)&&adpOk(p.seasons[B],state.adpTop)).map(p=>({p,sa:M(p.seasons[A]),sb:M(p.seasons[B])})).map(r=>({...r,dl:score(r.sa)-score(r.sb)})).sort((x,y)=>((x.sa.adp?x.sa.adp.rank:9999)-(y.sa.adp?y.sa.adp.rank:9999))||(y.dl-x.dl)).map(r=>`<tr><td><strong>${esc(r.p.name)}</strong></td><td><span class="pos ${r.p.pos}">${r.p.pos}</span></td><td class="r num">${r.sa.adp?r.sa.adp.rank:'—'}</td><td class="r num">${r.sb.adp?r.sb.adp.rank:'—'}</td><td class="r num">${r.sa.gm}</td><td class="r num">${r.sb.gm}</td><td class="r num ${r.sa.gm-r.sb.gm>0?'delta up':r.sa.gm-r.sb.gm<0?'delta down':''}">${r.sa.gm-r.sb.gm>0?'+':''}${r.sa.gm-r.sb.gm}</td><td class="r num">${fmt1(PL(r.sa))}</td><td class="r num">${fmt1(PL(r.sb))}</td><td class="r num">${fmt1(score(r.sa))}</td><td class="r num">${fmt1(score(r.sb))}</td><td class="r num ${r.dl>0?'delta up':r.dl<0?'delta down':''}">${r.dl>0?'+':''}${fmt1(r.dl)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 /* ---- League ranking ---- */
@@ -608,7 +625,7 @@ function viewLeague(){
   if (L){
     const seasons = seasonsForScope(state.leagueScope);
     const teams = L.teams.map(t=>{
-      const players = t.playerIds.map(id=>BY_ID[id]).filter(Boolean).map(p=>({p,a:aggregate(p,seasons)})).filter(x=>x.a.seasonsPlayed>0).sort((x,y)=>y.a.score-x.a.score);
+      const players = t.playerIds.map(id=>BY_ID[id]).filter(Boolean).map(p=>({p,a:aggregate(p,seasons)})).filter(x=>x.a.seasonsPlayed>0).sort((x,y)=>((x.a.bestAdp||9999)-(y.a.bestAdp||9999))||(y.a.score-x.a.score));
       const tot = players.reduce((s,x)=>{s.gm+=x.a.gm;s.pts+=x.a.ptsLost;s.listed+=x.a.listedTotal;s.score+=x.a.score;s.gp+=x.a.gp;s.poss+=x.a.gamesPossible;return s},{gm:0,pts:0,listed:0,score:0,gp:0,poss:0});
       const flagged = players.filter(x=>x.p.current.status!=='H').length;
       const unmatched = t.playerIds.filter(id=>!BY_ID[id]);
@@ -628,7 +645,7 @@ function viewLeague(){
       <div class="card kpi"><div class="lbl">Matched players</div><div class="val">${allPlayers.length}</div><div class="delta">${unmatchedTotal} without injury history in this dataset</div></div>
     </div>
     <h2>Team ranking (${byDc?'most draft capital sidelined first':'highest injury load first'})</h2>
-    <div class="tablewrap"><table><thead><tr><th class="rank">#</th><th>Team</th><th class="r">Matched</th><th class="r">Flagged now</th><th class="r">GM</th><th class="r">Availability</th><th class="r">Weeks on report</th><th class="r">Pts lost</th><th class="r">Total load</th><th class="r">Avg load / player</th><th class="r" title="sum of pick weight x games missed">DC lost</th><th class="r" title="draft-capital-weighted miss rate">Capital sidelined</th></tr></thead>
+    <div class="tablewrap"><table><thead><tr><th class="rank">#</th><th>Team</th><th class="r">Matched</th><th class="r">Flagged now</th><th class="r">GM</th><th class="r">Availability</th><th class="r">Weeks on report</th><th class="r">${ptsLabel()}</th><th class="r">Total load</th><th class="r">Avg load / player</th><th class="r" title="sum of pick weight x games missed">DC lost</th><th class="r" title="draft-capital-weighted miss rate">Capital sidelined</th></tr></thead>
     <tbody>${ranked.map((x,i)=>`<tr class="clickable ${state.expanded===x.t.id?'expanded':''}" tabindex="0" data-team="${x.t.id}" aria-expanded="${state.expanded===x.t.id}">
       <td class="rank">${i+1}</td><td><strong>${esc(x.t.name)}</strong>${x.t.owner?` <span class="muted small">${esc(x.t.owner)}</span>`:''}</td>
       <td class="r num">${x.players.length}${x.unmatched.length?` <span class="muted">(+${x.unmatched.length} n/a)</span>`:''}</td>
@@ -678,11 +695,16 @@ function viewData(){
         <label>Weighted weeks on report × <strong id="wwkv">${w.wk}</strong><input type="range" min="0" max="3" step="0.25" value="${w.wk}" data-w="wk"></label>
         <label>Fantasy points lost ÷ 10 × <strong id="wptsv">${w.pts}</strong><input type="range" min="0" max="3" step="0.25" value="${w.pts}" data-w="pts"></label>
       </div>
-      <p class="small muted">ADP filter (Overview, Season vs. season, League ranking): a player-season counts only if the player's preseason ADP - overall rank across all positions, from drafts completed before preseason game 1 - was inside the chosen top-N. In the pipeline this comes from MyFantasyLeague's ADP export (period JULY); the sample data uses synthetic ranks.</p>
+      <p class="small muted"><strong>ADP source.</strong> The pipeline pulls FantasyFootballCalculator's yearly ADP in two formats: <em>1QB</em> (standard / half-PPR / PPR, matched to the dataset's scoring) and <em>SF</em> (FFC's 2-QB ADP, the closest public proxy for Superflex). The 1QB / SF switch next to the top-N filter changes every ADP number, the top-N filter, the draft-capital weights and the ADP-expected PPG at once. FFC's historical ADP covers the final preseason window (typically the last 7–10 days before kickoff) - i.e. <em>after</em> the preseason games - and lists about 180 players (15 rounds × 12); overall rank counts kickers and defenses too. The earlier MyFantasyLeague feed (still available with <code>--adp-source mfl</code>) is dated before preseason game 1 but mixes every league format, which is why QBs looked far too early in it (Josh Allen at 3). ${ADP_META&&ADP_META.windows?`<br>Windows in this dataset: ${Object.entries(ADP_META.windows).map(([y,w])=>`${y}: ${w['1qb']?w['1qb'].start+'…'+w['1qb'].end+' ('+w['1qb'].drafts+' drafts)':'n/a'}`).join(' · ')}`:''}</p>
+      <p class="small muted"><strong>Left hurt / in-game exits.</strong> nflverse snap counts give each player's offensive snap share per game. A played game is flagged as an early exit when the share drops below half of the player's median share that season (at least three other games, median ≥ 35 %), the game before was not already low (so ramp-ups after a return are not flagged), and he is on the injury report or out in the following game (a player who was already Questionable must actually miss the next game). It is a heuristic: it cannot see the exact play he left on, and a blowout benching followed by an unrelated listing can slip through. Flagged weeks show as a split green/red cell; the injury that follows is marked as starting in-game.</p>
+      <h3 style="margin-top:14px">Points-lost basis</h3>
+      <div class="seg" role="group" aria-label="Points lost basis"><button data-basis="realized" aria-pressed="${state.ptsBasis==='realized'}">Realized PPG</button><button data-basis="adp" aria-pressed="${state.ptsBasis==='adp'}" ${state.hasExpPpg?'':'disabled title="needs a dataset built with ADP"'}>ADP-expected PPG</button></div>
+      <p class="small muted" style="margin-top:6px"><strong>Realized</strong>: games missed × the player's average points in the games he played that season (biased down by games he left early; estimated from a neighbouring season if he never played). <strong>ADP-expected</strong>: games missed × the PPG the market expected at his draft slot - the pipeline fits <code>PPG = a + b·ln(position rank)</code> on players with ≥ 8 games for every season and position (pooled fallback) and reads each player's expectation off that curve. Answers "what did my draft pick cost me", is immune to partial-game bias and works for players who never played. Players without ADP fall back to realized.${state.hasExpPpg?'':' <em>Not available in the current dataset - rebuild with the latest pipeline.</em>'}</p>
       <h3 style="margin-top:14px">Draft-capital weighting (ADP × games played)</h3>
       <label class="small" style="display:flex;flex-direction:column;gap:4px;max-width:360px">Decay β = <strong id="wbetav">${state.beta}</strong> (higher = early picks dominate more)<input type="range" min="0.5" max="2" step="0.1" value="${state.beta}" data-beta></label>
       <table style="min-width:0;margin-top:8px"><thead><tr><th>ADP</th>${[1,6,12,24,36,48,72,100,150].map(r=>`<th class="r">${r}</th>`).join('')}</tr></thead><tbody><tr><td class="small">weight</td>${[1,6,12,24,36,48,72,100,150].map(r=>`<td class="r num">${dcWeight(r).toFixed(2)}</td>`).join('')}</tr></tbody></table>
       <p class="small muted">Per player-season: <strong>DC lost</strong> = w(ADP) × games missed, measured in “1.01-games” (a 1.01 missing the whole season = 17). Per season / team: <strong>capital sidelined</strong> = Σ w·games missed ÷ Σ w·games possible, i.e. the share of invested draft capital that did not take the field. The <strong>Season Injury Index</strong> rescales that so 100 = the average of completed seasons; 120 means a season was 20 % worse than usual <em>for the players people actually paid for</em>. Being a rate, it is robust to 16 vs 17-game schedules, partial seasons and the week filter; players without ADP are excluded.</p>
+      <p class="small muted">Status logic: a week is counted as an injury absence only when the player did not play <em>and</em> was on the injury report (Q/D/O) or on a reserve list (IR/PUP). Not playing for other reasons (healthy scratch, benching, depth chart, suspension, not under contract) is excluded from games possible, so it neither hurts nor helps availability. The status shown is the final game status - a Doubtful player who sat is Out; the pre-game designation is kept for the tooltip and for the upcoming week.</p>
       <p class="small muted">Week filter: restricts every metric (games missed, weeks listed, points lost, injury events, injury load) to the selected week window of each season; e.g. 1–1 shows Week 1 only, 15–17 the fantasy playoffs. Availability strips fade the weeks outside the window.</p>
       <p class="small muted">Weeks on report are weighted Q 0.25 · D 0.5 · O 1 · IR 1, so a player who plays through “questionable” tags is not scored like one who sits.</p>
     </div>
@@ -774,6 +796,7 @@ function bind(){
   on('#seasonSel','change',e=>{state.season=e.target.value; render();});
   on('[data-pos]','click',e=>{state.pos=e.currentTarget.dataset.pos; render();});
   on('[data-adp]','click',e=>{state.adpTop=e.currentTarget.dataset.adp; render();});
+  on('[data-adpfmt]','click',e=>{ if(e.currentTarget.disabled) return; state.adpFmt=e.currentTarget.dataset.adpfmt; applyAdpFmt(); render(); });
   on('#wkFrom','change',e=>{ state.wkFrom=+e.target.value; if(state.wkTo<state.wkFrom) state.wkTo=state.wkFrom; render(); });
   on('#wkTo','change',e=>{ state.wkTo=+e.target.value; if(state.wkFrom>state.wkTo) state.wkFrom=state.wkTo; render(); });
   on('#wkReset','click',()=>{ state.wkFrom=1; state.wkTo=MAX_WEEKS; render(); });
@@ -813,9 +836,10 @@ function bind(){
   on('[data-w]','change',()=>render());
   on('[data-beta]','input',e=>{ state.beta=+e.target.value; document.getElementById('wbetav').textContent=e.target.value; });
   on('[data-beta]','change',()=>render());
+  on('[data-basis]','click',e=>{ state.ptsBasis=e.currentTarget.dataset.basis; render(); });
   on('[data-lrank]','click',e=>{ state.leagueRank=e.currentTarget.dataset.lrank; render(); });
   on('#exportJson','click',()=>download('injury-ledger-dataset.json', JSON.stringify(PLAYERS.map(p=>({id:p.id,name:p.name,pos:p.pos,team:p.team,rookie:p.rookie,seasons:p.seasons})),null,1),'application/json'));
-  on('#exportCsv','click',()=>{ const rows=[['player_id','name','pos','team','season','adp_rank','adp_pick','gp','gm','q','d','o','ir','injuries','ppg','pts_lost','injury_load']]; PLAYERS.forEach(p=>Object.values(p.seasons).forEach(s=>rows.push([p.id,p.name,p.pos,p.team,s.season,s.adp?s.adp.rank:'',s.adp?s.adp.pick:'',s.gp,s.gm,s.listed.Q,s.listed.D,s.listed.O,s.listed.IR,s.injCount,s.ppg,s.ptsLost,score(s)]))); download('injury-ledger-player-seasons.csv', rows.map(r=>r.map(v=>/[",\n]/.test(String(v))?'"'+String(v).replace(/"/g,'""')+'"':v).join(',')).join('\n'),'text/csv'); });
+  on('#exportCsv','click',()=>{ const rows=[['player_id','name','pos','team','season','adp_1qb_rank','adp_1qb_pick','adp_sf_rank','adp_sf_pick','gp','gm','q','d','o','ir','injuries','left_hurt','ppg','pts_lost','injury_load']]; PLAYERS.forEach(p=>Object.values(p.seasons).forEach(s=>rows.push([p.id,p.name,p.pos,p.team,s.season,s.adp1qb?s.adp1qb.rank:'',s.adp1qb?s.adp1qb.pick:'',s.adpSf?s.adpSf.rank:'',s.adpSf?s.adpSf.pick:'',s.gp,s.gm,s.listed.Q,s.listed.D,s.listed.O,s.listed.IR,s.injCount,s.earlyExits||0,s.ppg,PL(s),score(s)]))); download('injury-ledger-player-seasons.csv', rows.map(r=>r.map(v=>/[",\n]/.test(String(v))?'"'+String(v).replace(/"/g,'""')+'"':v).join(',')).join('\n'),'text/csv'); });
 }
 
 /* ---- boot: load real dataset if available, else keep synthetic sample ---- */
@@ -827,11 +851,19 @@ function applyDataset(ds){
   SEASONS = []; for (let y = start; y <= CURRENT_SEASON; y++) SEASONS.push(y);
   PLAYERS = (ds.players||[]).map(p=>{
     const seasons = {};
-    Object.entries(p.seasons||{}).forEach(([y,s])=>{ s.season = +y; s.nWeeks = s.nWeeks || s.weeks.length; seasons[+y] = summarize(s); });
+    Object.entries(p.seasons||{}).forEach(([y,s])=>{ s.season = +y; s.nWeeks = s.nWeeks || s.weeks.length; s.adp1qb = s.adp||null; s.adpSf = s.adpSf||null;
+      s.weeks.forEach(w=>{ if ((w.status==='D'||w.status==='Q') && !w.played){ w.desig = w.desig||w.status; w.status='O'; } });
+      seasons[+y] = summarize(s); });
     const cur = p.current && p.current.status ? p.current : {status:'H', inj:null};
     return {...p, id:String(p.id), seasons, current: cur};
   }).filter(p=>Object.keys(p.seasons).length);
   BY_ID = Object.fromEntries(PLAYERS.map(p=>[p.id,p]));
+  state.hasSf = PLAYERS.some(p=>Object.values(p.seasons).some(s=>s.adpSf));
+  if (!state.hasSf) state.adpFmt = '1qb';
+  applyAdpFmt();
+  state.hasExpPpg = PLAYERS.some(p=>Object.values(p.seasons).some(s=>(s.adp1qb && s.adp1qb.expPpg)||(s.adpSf && s.adpSf.expPpg)));
+  if (state.hasExpPpg) state.ptsBasis = 'adp';
+  ADP_META = meta.adp || null;
   DATA_SOURCE = (meta.source ? 'nflverse' : 'external') + (meta.generated ? ' · generated '+meta.generated.slice(0,10) : '') + (meta.scoring ? ' · '+meta.scoring.toUpperCase()+' scoring' : '');
   state.seasonA = CURRENT_SEASON-1; state.seasonB = CURRENT_SEASON-2; state.season = String(CURRENT_SEASON);
   state.compare = state.compare.filter(id=>BY_ID[id]); if (!state.compare.length) state.compare = PLAYERS.slice().sort((a,b)=>aggregate(b,SEASONS).score-aggregate(a,SEASONS).score).slice(0,2).map(p=>p.id);
