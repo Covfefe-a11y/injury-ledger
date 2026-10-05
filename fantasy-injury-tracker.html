@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Injury Ledger — Fantasy Football Injury Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f1ea; --paper:#fffdf8; --ink:#17212b; --muted:#5f6b78; --line:#d9d3c7; --line-soft:#ebe6dc;
+    --accent:#0f3d5e; --accent-soft:#dbe8f1;
+    --h:#2f9e6b; --q:#e0a100; --d:#e3671c; --o:#c8323a; --ir:#7a1f2b; --bye:#c9cfd6; --fut:#eef0f3;
+    --radius:6px; --shadow:0 1px 2px rgba(23,33,43,.06),0 4px 14px rgba(23,33,43,.05);
+    --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;font-size:14px;line-height:1.45}
+  button,input,select,textarea{font:inherit;color:inherit}
+  a{color:var(--accent)}
+  .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  header{background:var(--ink);color:#f4f1ea;padding:14px 22px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  header h1{margin:0;font-size:17px;font-weight:700;letter-spacing:.2px;display:flex;align-items:center;gap:10px}
+  header h1 .mark{display:inline-block;width:22px;height:22px;background:var(--o);border-radius:3px;position:relative}
+  header h1 .mark::before,header h1 .mark::after{content:"";position:absolute;background:#fff;left:50%;top:50%;transform:translate(-50%,-50%)}
+  header h1 .mark::before{width:12px;height:4px}header h1 .mark::after{width:4px;height:12px}
+  header .sub{color:#b9c2cc;font-size:12.5px}
+  nav{display:flex;gap:4px;margin-left:auto;flex-wrap:wrap}
+  nav button{background:transparent;border:1px solid transparent;color:#d6dde5;padding:7px 12px;border-radius:var(--radius);cursor:pointer;font-weight:500}
+  nav button:hover{background:rgba(255,255,255,.08)}
+  nav button[aria-selected="true"]{background:#f4f1ea;color:var(--ink);font-weight:600}
+  nav button:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--q);outline-offset:2px}
+  main{max-width:1280px;margin:0 auto;padding:20px 22px 60px}
+  .banner{background:#fff6d6;border:1px solid #ead9a0;color:#5b4a0d;padding:8px 12px;border-radius:var(--radius);font-size:12.5px;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .banner strong{font-weight:600}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:14px}
+  .field{display:flex;flex-direction:column;gap:4px}
+  .field label{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+  input[type=text],input[type=search],select,textarea{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:7px 9px;min-width:0}
+  input[type=search]{min-width:200px}
+  textarea{width:100%;min-height:120px;resize:vertical;font-family:var(--mono);font-size:12.5px}
+  .btn{background:var(--accent);color:#fff;border:1px solid var(--accent);border-radius:var(--radius);padding:8px 13px;cursor:pointer;font-weight:600}
+  .btn:hover{filter:brightness(1.1)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn.ghost{background:transparent;color:var(--accent)}
+  .btn.sm{padding:4px 9px;font-size:12.5px;font-weight:500}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:var(--paper)}
+  .seg button{background:transparent;border:0;padding:7px 11px;cursor:pointer;border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:0}
+  .seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+  .kpi .lbl{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+  .kpi .val{font-family:var(--mono);font-size:24px;font-weight:600;margin-top:4px}
+  .kpi .delta{font-size:12px;color:var(--muted)}
+  .delta.up{color:var(--o)} .delta.down{color:var(--h)}
+  h2{font-size:15px;margin:18px 0 8px}
+  h3{font-size:13px;margin:0 0 8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+  .tablewrap{overflow-x:auto;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+  table{border-collapse:collapse;width:100%;min-width:720px}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line-soft);vertical-align:middle;white-space:nowrap}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);background:#faf7f0;position:sticky;top:0;z-index:1;user-select:none}
+  th.sortable{cursor:pointer}
+  th.sortable:hover{color:var(--ink)}
+  th .arrow{font-size:10px;margin-left:3px}
+  td.r,th.r{text-align:right}
+  tbody tr:hover{background:#f7f3ea}
+  tbody tr.clickable{cursor:pointer}
+  tr.expanded>td{background:#f3eee3}
+  .rank{font-family:var(--mono);color:var(--muted);width:34px}
+  .pos{display:inline-block;font-size:11px;font-weight:700;padding:1px 6px;border-radius:3px;background:#e8e4da;color:#3c4652;min-width:28px;text-align:center}
+  .pos.QB{background:#e3ecf5;color:#1d4e7a}.pos.RB{background:#e5f3ea;color:#1f6a40}.pos.WR{background:#fbe9d8;color:#8a4410}.pos.TE{background:#f1e4f4;color:#64307a}
+  .pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;color:#fff}
+  .pill.H{background:var(--h)}.pill.Q{background:var(--q);color:#2b2200}.pill.D{background:var(--d)}.pill.O{background:var(--o)}.pill.IR{background:var(--ir)}.pill.BYE{background:var(--bye);color:#333}
+  .strip{display:inline-flex;gap:2px;align-items:flex-end}
+  .strip i{display:block;width:9px;height:16px;border-radius:2px;background:var(--fut)}
+  .strip i.H{background:var(--h)}.strip i.Q{background:var(--q)}.strip i.D{background:var(--d)}.strip i.O{background:var(--o)}.strip i.IR{background:var(--ir)}.strip i.BYE{background:var(--bye)}
+  .strip i.FUT{background:repeating-linear-gradient(135deg,#e5e8ec 0 2px,#f6f7f9 2px 4px)}
+  .strip i.dim{opacity:.22}.strip i.DNP{background:#8e98a3}.strip i.NR,.strip i.SUS{background:transparent;border:1px dashed #b5bcc4}
+  .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:8px 0 0}
+  .legend span i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+  .muted{color:var(--muted)} .small{font-size:12px}
+  .inj{font-size:12px;color:var(--muted);white-space:normal;max-width:260px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media (max-width:900px){.grid2,.grid3{grid-template-columns:1fr}}
+  .chart{width:100%;height:auto;display:block}
+  .chart text{font-family:var(--mono);font-size:10px;fill:var(--muted)}
+  .chart .axis{stroke:var(--line)}
+  .chart rect:hover{opacity:.8}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid #b9cfdf;border-radius:999px;padding:3px 6px 3px 10px;font-size:12.5px}
+  .chip button{border:0;background:transparent;cursor:pointer;color:var(--accent);font-weight:700;padding:0 4px;line-height:1}
+  .suggest{position:relative}
+  .suggest ul{position:absolute;z-index:5;left:0;right:0;top:100%;margin:2px 0 0;padding:4px 0;list-style:none;background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);max-height:240px;overflow:auto}
+  .suggest li{padding:6px 10px;cursor:pointer;display:flex;justify-content:space-between}
+  .suggest li:hover,.suggest li[aria-selected="true"]{background:var(--accent-soft)}
+  .season-row{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;padding:5px 0;border-bottom:1px solid var(--line-soft)}
+  .season-row:last-child{border-bottom:0}
+  .season-row .yr{font-family:var(--mono);font-weight:600}
+  .season-row .meta{font-family:var(--mono);font-size:12px;color:var(--muted)}
+  .msg{padding:10px 12px;border-radius:var(--radius);font-size:13px;margin-top:10px}
+  .msg.err{background:#fde8e8;border:1px solid #f1b8b8;color:#7a1f1f}
+  .msg.ok{background:#e4f5ea;border:1px solid #b4dec3;color:#1f5a35}
+  .msg.info{background:var(--accent-soft);border:1px solid #b9cfdf;color:#143b57}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  .weights{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  .weights label{display:flex;flex-direction:column;gap:4px;font-size:12.5px}
+  .weights input[type=range]{width:100%}
+  .bar{height:8px;background:var(--line-soft);border-radius:4px;overflow:hidden;min-width:80px}
+  .bar i{display:block;height:100%;background:var(--o)}
+  .scorecell{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+  details summary{cursor:pointer;font-weight:600}
+  code{font-family:var(--mono);font-size:12px;background:#efebe2;padding:1px 5px;border-radius:3px}
+  .footer-note{margin-top:30px;color:var(--muted);font-size:12px}
+  @media (prefers-reduced-motion:no-preference){.btn,nav button,.seg button{transition:background .12s,filter .12s}}
+  @media (max-width:640px){header{padding:12px 14px}main{padding:14px}input[type=search]{min-width:140px}table{min-width:600px}}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="mark" aria-hidden="true"></span>Injury Ledger</h1>
+  <span class="sub">Fantasy-relevant NFL injuries · 2016 – 2026 · season comparison · league ranking</span>
+  <nav role="tablist" aria-label="Views" id="nav"></nav>
+</header>
+<main id="app"></main>
+
+<script>
+/* =====================================================================
+   DATA LAYER
+   Sample data is SYNTHETIC. Player names/positions and Sleeper IDs are
+   real (best effort) so that a Sleeper roster import matches, but every
+   injury event below is generated by a seeded RNG, lightly shaped by a
+   few well-known season-defining injuries. Replace `buildDataset()` with
+   a fetch of your own injury feed when going live.
+   ===================================================================== */
+let CURRENT_SEASON = 2026;
+let CURRENT_WEEK = 4;              // completed weeks in the current season
+let SEASONS = []; for (let y = 2016; y <= CURRENT_SEASON; y++) SEASONS.push(y);
+let DATA_SOURCE = 'synthetic';
+const EXCLUDED = new Set(['BYE','FUT','NR','SUS']); // not counted as possible games
+const POS_BASE_PPG = { QB: 19, RB: 14, WR: 13, TE: 9.5 };
+
+// [sleeperId, name, pos, team, rookieYear, proneness, shapingNotes]
+const PLAYER_SEED = [
+ ["4034","Christian McCaffrey","RB","SF",2017,1.5,{2019:{clean:1},2020:{major:2},2021:{major:12},2024:{major:1}}],
+ ["4866","Saquon Barkley","RB","PHI",2018,1.1,{2020:{major:2},2024:{clean:1}}],
+ ["4988","Nick Chubb","RB","HOU",2018,1.0,{2023:{major:2}}],
+ ["6768","Tua Tagovailoa","QB","MIA",2020,1.3,{2022:{mod:2},2024:{major:2}}],
+ ["6794","Justin Jefferson","WR","MIN",2020,0.5,{2023:{major:5}}],
+ ["7564","Ja'Marr Chase","WR","CIN",2021,0.6,{}],
+ ["4039","Cooper Kupp","WR","SEA",2017,1.3,{2018:{major:10},2021:{clean:1},2022:{major:10}}],
+ ["3321","Tyreek Hill","WR","MIA",2016,0.5,{}],
+ ["3198","Derrick Henry","RB","BAL",2016,0.5,{2021:{major:8}}],
+ ["6770","Joe Burrow","QB","CIN",2020,1.1,{2020:{major:11},2023:{major:11},2025:{major:2}}],
+ ["4046","Patrick Mahomes","QB","KC",2017,0.4,{}],
+ ["4984","Josh Allen","QB","BUF",2018,0.3,{}],
+ ["4881","Lamar Jackson","QB","BAL",2018,0.7,{2022:{major:13}}],
+ ["1466","Travis Kelce","TE","KC",2013,0.3,{}],
+ ["5012","Mark Andrews","TE","BAL",2018,0.9,{2023:{major:11}}],
+ ["4217","George Kittle","TE","SF",2017,1.0,{}],
+ ["5849","Kyler Murray","QB","ARI",2019,1.0,{2022:{major:14},2023:{major:1}}],
+ ["4017","Deshaun Watson","QB","CLE",2017,1.1,{2017:{major:8},2024:{major:7}}],
+ ["6813","Jonathan Taylor","RB","IND",2020,1.0,{2022:{mod:3},2023:{major:1}}],
+ ["4663","Austin Ekeler","RB","WAS",2017,0.9,{2024:{major:14}}],
+ ["1479","Keenan Allen","WR","LAC",2013,1.1,{2016:{major:1}}],
+ ["1426","Mike Evans","WR","TB",2014,0.6,{2024:{mod:2}}],
+ ["2449","Stefon Diggs","WR","NE",2015,0.6,{2024:{major:8}}],
+ ["9509","Bijan Robinson","RB","ATL",2023,0.3,{}],
+ ["8155","Breece Hall","RB","NYJ",2022,0.9,{2022:{major:7}}],
+ ["9493","Puka Nacua","WR","LAR",2023,1.0,{2024:{mod:3}}],
+ ["8146","Garrett Wilson","WR","NYJ",2022,0.4,{}],
+ ["7547","Amon-Ra St. Brown","WR","DET",2021,0.4,{}],
+ ["6786","CeeDee Lamb","WR","DAL",2020,0.5,{}],
+ ["5859","A.J. Brown","WR","PHI",2019,0.9,{}],
+ ["4037","Chris Godwin","WR","TB",2017,1.1,{2021:{major:15},2024:{major:7}}],
+ ["5844","T.J. Hockenson","TE","MIN",2019,1.0,{2023:{major:16},2024:{major:1}}],
+ ["7553","Kyle Pitts","TE","ATL",2021,0.8,{2022:{major:11}}],
+ ["3294","Dak Prescott","QB","DAL",2016,0.8,{2020:{major:5},2024:{major:9}}],
+ ["6904","Jalen Hurts","QB","PHI",2020,0.5,{}],
+ ["4199","Alvin Kamara","RB","NO",2017,0.7,{}],
+ ["9226","De'Von Achane","RB","MIA",2023,1.1,{2023:{mod:3}}],
+ ["9221","Jahmyr Gibbs","RB","DET",2023,0.5,{}],
+ ["6801","Tee Higgins","WR","CIN",2020,1.2,{2024:{mod:3}}],
+ ["8112","Drake London","WR","ATL",2022,0.5,{}],
+ ["5846","DK Metcalf","WR","PIT",2019,0.4,{}],
+ ["6819","Michael Pittman Jr.","WR","IND",2020,0.7,{}],
+ ["7588","Javonte Williams","RB","DAL",2021,1.0,{2022:{major:4}}],
+ ["6806","J.K. Dobbins","RB","DEN",2020,1.5,{2021:{major:1},2023:{major:1}}],
+ ["9229","Anthony Richardson","QB","IND",2023,1.4,{2023:{major:5}}],
+ ["6803","Brandon Aiyuk","WR","SF",2020,0.8,{2024:{major:7}}],
+ ["11628","Marvin Harrison Jr.","WR","ARI",2024,0.4,{}],
+ ["11631","Malik Nabers","WR","NYG",2024,0.8,{2025:{major:4}}],
+ ["11566","Jayden Daniels","QB","WAS",2024,0.6,{}],
+ ["9488","Rashee Rice","WR","KC",2023,1.0,{2024:{major:4}}],
+ ["8167","Christian Watson","WR","GB",2022,1.4,{}],
+ ["8137","Nico Collins","WR","HOU",2021,0.9,{}],
+ ["8130","Trey McBride","TE","ARI",2022,0.4,{}],
+ ["9479","Sam LaPorta","TE","DET",2023,0.5,{}],
+ ["4137","Aaron Jones","RB","MIN",2017,1.0,{}],
+ ["4018","Joe Mixon","RB","HOU",2017,0.8,{}],
+ ["8138","Kenneth Walker III","RB","SEA",2022,1.1,{}],
+ ["8205","Chris Olave","WR","NO",2022,1.0,{2024:{major:9}}],
+ ["7543","Najee Harris","RB","LAC",2021,0.3,{}],
+ ["6945","Justin Herbert","QB","LAC",2020,0.4,{}],
+];
+
+const INJURY_TYPES = {
+  soft: [["Hamstring","soft"],["Calf","soft"],["Groin","soft"],["Quad","soft"],["Oblique","soft"]],
+  joint: [["Ankle (high sprain)","joint"],["Knee (MCL)","joint"],["Shoulder (AC)","joint"],["Toe (turf toe)","joint"],["Wrist","joint"]],
+  major: [["Knee (ACL)","structural"],["Achilles","structural"],["Foot (Lisfranc)","structural"],["Collarbone","structural"],["Knee (meniscus)","structural"],["Ankle (fracture)","structural"],["Back","structural"],["Concussion","head"]],
+};
+
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function poisson(rng,l){let L=Math.exp(-l),k=0,p=1;do{k++;p*=rng()}while(p>L);return k-1}
+function pick(rng,arr){return arr[Math.floor(rng()*arr.length)]}
+
+function buildSeason(p, season, rng){
+  const nWeeks = season >= 2021 ? 18 : 17;
+  const bye = 5 + Math.floor(rng()*9);
+  const weeks = [];
+  for (let w=1; w<=nWeeks; w++) weeks.push({wk:w, status:'H', played:true, inj:null});
+  weeks[bye-1] = {wk:bye, status:'BYE', played:false, inj:null};
+  const injuries = [];
+  const note = (p.notes && p.notes[season]) || {};
+  const ppg = +(POS_BASE_PPG[p.pos] * (0.8 + rng()*0.5)).toFixed(1);
+
+  function free(w){ return w>=1 && w<=nWeeks && weeks[w-1].status==='H'; }
+  function addEvent(start, sev){
+    let [name, cls] = sev==='major' ? pick(rng,INJURY_TYPES.major) : sev==='mod' ? pick(rng,rng()<0.5?INJURY_TYPES.joint:INJURY_TYPES.soft) : pick(rng,INJURY_TYPES.soft);
+    if (!free(start)) { for (let k=1;k<=4;k++){ if(free(start+k)){start+=k;break;} } if(!free(start)) return; }
+    const ev = {week:start, type:name, cls, sev, missed:0, listed:0};
+    const mark = (w, st, played) => { if (w<1||w>nWeeks) return; if (weeks[w-1].status==='BYE' || !free(w)) return; weeks[w-1] = {wk:w,status:st,played,inj:name}; ev.listed++; if(!played) ev.missed++; };
+    if (sev==='minor'){
+      mark(start,'Q',true); if (rng()<0.5) mark(start+1,'Q',true); if (rng()<0.25) mark(start+2,'Q',true);
+    } else if (sev==='mod'){
+      const out = 1 + Math.floor(rng()*3);
+      mark(start, rng()<0.4?'D':'O', false);
+      for (let k=1;k<out;k++) mark(start+k,'O',false);
+      mark(start+out,'Q',true);
+    } else {
+      const seasonEnding = rng()<0.55;
+      const len = seasonEnding ? nWeeks-start+1 : 4+Math.floor(rng()*6);
+      for (let k=0;k<len;k++) mark(start+k, k===0&&rng()<0.3?'O':'IR', false);
+      if (!seasonEnding) mark(start+len,'Q',true);
+    }
+    if (ev.listed>0) injuries.push(ev);
+  }
+
+  if (note.major) addEvent(note.major, 'major');
+  if (note.mod) for (let i=0;i<note.mod;i++) addEvent(2+Math.floor(rng()*(nWeeks-4)), 'mod');
+  if (!note.clean){
+    const n = poisson(rng, p.prone*1.15);
+    for (let i=0;i<n;i++){
+      const r = rng();
+      const sev = r < 0.5 ? 'minor' : r < 0.86 ? 'mod' : 'major';
+      if (sev==='major' && note.major) continue;
+      addEvent(1+Math.floor(rng()*nWeeks), sev);
+    }
+  }
+  // current season: future weeks are not counted
+  if (season === CURRENT_SEASON){
+    for (let w=CURRENT_WEEK+1; w<=nWeeks; w++){ const cur = weeks[w-1]; weeks[w-1] = {wk:w, status:'FUT', played:false, inj:null, next: w===CURRENT_WEEK+1 ? cur : null}; }
+  }
+  injuries.sort((a,b)=>a.week-b.week);
+  return summarize({season, nWeeks, bye, weeks, injuries, ppg});
+}
+
+function summarize(s){
+  const counted = s.weeks.filter(w=>!EXCLUDED.has(w.status));
+  const listed = {Q:0,D:0,O:0,IR:0};
+  let gm=0, gp=0;
+  counted.forEach(w=>{ if(w.played) gp++; else gm++; if (listed[w.status]!==undefined) listed[w.status]++; });
+  s.gp = gp; s.gm = gm; s.listed = listed;
+  s.listedTotal = listed.Q+listed.D+listed.O+listed.IR;
+  s.listedWeighted = listed.Q*0.25 + listed.D*0.5 + listed.O + listed.IR;
+  s.ptsLost = +(gm * s.ppg).toFixed(1);
+  s.injCount = s.injuries.filter(i=>i.week <= (s.season===CURRENT_SEASON?CURRENT_WEEK:99)).length;
+  s.hadIR = listed.IR>0;
+  s.gamesPossible = counted.length;
+  return s;
+}
+
+function buildDataset(){
+  return PLAYER_SEED.map((row,idx)=>{
+    const [id,name,pos,team,rookie,prone,notes] = row;
+    const rng = mulberry32(parseInt(id,10)*7919 + 17);
+    const p = {id,name,pos,team,rookie,prone,notes, seasons:{}};
+    SEASONS.forEach(y=>{ if (y>=rookie) p.seasons[y] = buildSeason(p,y,rng); });
+    // synthetic preseason ADP: seed order ~ tier, rookies go later in year 1, bad injury years push next year's ADP down
+    let base = 4 + idx*2.2;
+    SEASONS.forEach(y=>{ const s=p.seasons[y]; if(!s) return;
+      let r = base + (rng()-0.5)*14 + (y===rookie?22:0) + (p.seasons[y-1]&&p.seasons[y-1].gm>=6?15:0);
+      r = Math.max(1, Math.round(r));
+      s.adp = {pick: +(r + (rng()-0.5)*2).toFixed(1), rank: r, posRank: null, drafts: 800, period:'JULY', source:'synthetic'}; });
+    // current designation = status that was generated for the upcoming week
+    const cur = p.seasons[CURRENT_SEASON];
+    const nxt = cur && cur.weeks[CURRENT_WEEK] && cur.weeks[CURRENT_WEEK].next;
+    const last = cur && cur.weeks[CURRENT_WEEK-1];
+    p.current = nxt && nxt.status!=='H' && nxt.status!=='BYE' ? {status:nxt.status, inj:nxt.inj} : last && !last.played && last.status!=='BYE' ? {status:last.status, inj:last.inj} : {status:'H', inj:null};
+    return p;
+  });
+}
+
+let PLAYERS = buildDataset();
+(function normalizeSyntheticAdp(){ SEASONS.forEach(y=>{ const ps = PLAYERS.filter(p=>p.seasons[y]&&p.seasons[y].adp).sort((a,b)=>a.seasons[y].adp.pick-b.seasons[y].adp.pick); const pc={};
+  ps.forEach((p,i)=>{ const a=p.seasons[y].adp; a.rank=i+1; pc[p.pos]=(pc[p.pos]||0)+1; a.posRank=p.pos+pc[p.pos]; }); }); })();
+let BY_ID = Object.fromEntries(PLAYERS.map(p=>[p.id,p]));
+const ADP_TIERS = [['all','All'],['12','Top 12'],['24','Top 24'],['50','Top 50'],['100','Top 100']];
+
+/* ---------- metrics / scoring ---------- */
+const state = {
+  view:'overview', season:String(CURRENT_SEASON), pos:'ALL', q:'', sort:{key:'score',dir:-1},
+  compare:['4034','4988'],
+  seasonA:2025, seasonB:2024,
+  league:null, leagueScope:'career3', leagueMsg:null, expanded:null, leagueId:'',
+  weights:{gm:1, wk:1, pts:1},
+  adpTop:'all', wkFrom:1, wkTo:18, beta:1.2, leagueRank:'load',
+  busy:false,
+};
+
+function seasonsForScope(scope){
+  if (scope==='career') return SEASONS;
+  if (scope==='career3') return SEASONS.slice(-3);
+  if (scope==='career5') return SEASONS.slice(-5);
+  return [parseInt(scope,10)];
+}
+const MAX_WEEKS = 18;
+const _mcache = new WeakMap();
+function weekRangeActive(){ return state.wkFrom>1 || state.wkTo<MAX_WEEKS; }
+function M(s){
+  // season metrics restricted to the selected week window (state.wkFrom..state.wkTo)
+  if (!s) return s;
+  if (!weekRangeActive()) return s;
+  const key = state.wkFrom+'-'+state.wkTo;
+  let c = _mcache.get(s); if (c && c.key===key) return c.val;
+  const weeks = s.weeks.filter(w=>w.wk>=state.wkFrom && w.wk<=state.wkTo);
+  const counted = weeks.filter(w=>!EXCLUDED.has(w.status));
+  const listed = {Q:0,D:0,O:0,IR:0}; let gp=0, gm=0;
+  counted.forEach(w=>{ if(w.played) gp++; else gm++; if (listed[w.status]!==undefined) listed[w.status]++; });
+  const lim = s.season===CURRENT_SEASON ? CURRENT_WEEK : 99;
+  const injuries = s.injuries.filter(i=>i.week>=state.wkFrom && i.week<=Math.min(state.wkTo,lim));
+  const val = {...s, gp, gm, listed, listedTotal: listed.Q+listed.D+listed.O+listed.IR,
+    listedWeighted: listed.Q*0.25+listed.D*0.5+listed.O+listed.IR, ptsLost: +(gm*s.ppg).toFixed(1),
+    injCount: injuries.length, injuries, hadIR: listed.IR>0, gamesPossible: counted.length};
+  _mcache.set(s,{key,val}); return val;
+}
+function weekControl(){
+  const opts = sel => Array.from({length:MAX_WEEKS},(_,i)=>i+1).map(w=>`<option value="${w}" ${w===sel?'selected':''}>${w}</option>`).join('');
+  return `<div class="field"><label>Weeks</label><div style="display:flex;gap:6px;align-items:center"><select id="wkFrom" aria-label="From week">${opts(state.wkFrom)}</select><span class="muted">–</span><select id="wkTo" aria-label="To week">${opts(state.wkTo)}</select>${weekRangeActive()?`<button class="btn sm ghost" id="wkReset" title="Reset to all weeks">All</button>`:''}</div></div>`;
+}
+function weekNote(){ return weekRangeActive() ? ` Only weeks ${state.wkFrom}–${state.wkTo} are counted (set a single week, e.g. 1–1, to see one week).` : ''; }
+/* Draft-capital weighting: how much a pick is 'worth' relative to the 1.01.
+   w(rank) = (12 / (rank + 11)) ^ beta  ->  pick 1 = 1.00, pick 12 ~ 0.5, pick 24 ~ 0.3, pick 48 ~ 0.17, pick 100 ~ 0.07 (beta 1.2),
+   which tracks typical auction-value curves (a late first is worth about half a 1.01, a late fourth about a sixth). */
+function dcWeight(rank){ return rank ? Math.pow(12/(rank+11), state.beta) : 0; }
+function seasonIndex(y){
+  // Draft-capital-weighted miss rate of a season: sum(w * games missed) / sum(w * games possible), players with ADP only
+  let lost=0, poss=0, n=0;
+  PLAYERS.forEach(p=>{ const s0=p.seasons[y]; if(!s0||!s0.adp||!adpOk(s0,state.adpTop)) return; const s=M(s0); if(!s.gamesPossible) return;
+    const w=dcWeight(s.adp.rank); lost+=w*s.gm; poss+=w*s.gamesPossible; n++; });
+  return {y, n, lost, poss, rate: poss?lost/poss:null};
+}
+function seasonIndexTable(){
+  const rows = SEASONS.map(seasonIndex).filter(r=>r.n>0);
+  const base = rows.filter(r=>r.y<CURRENT_SEASON && r.rate!==null);
+  const baseline = base.length ? base.reduce((t,r)=>t+r.rate,0)/base.length : null;
+  rows.forEach(r=>{ r.index = baseline && r.rate!==null ? r.rate/baseline*100 : null; });
+  return {rows, baseline};
+}
+function adpOk(s, top){ if (!top || top==='all') return true; return !!(s && s.adp && s.adp.rank <= +top); }
+function aggregate(p, seasons, top){
+  top = top===undefined ? state.adpTop : top;
+  const agg = {gp:0,gm:0,listed:{Q:0,D:0,O:0,IR:0},listedWeighted:0,ptsLost:0,injCount:0,seasonsPlayed:0,gamesPossible:0,irSeasons:0,injuries:[],bestAdp:null,dcPoss:0,dcLost:0,dcRate:null};
+  seasons.forEach(y=>{
+    const s = M(p.seasons[y]); if(!s || !adpOk(s, top)) return;
+    if (s.adp && (agg.bestAdp===null || s.adp.rank<agg.bestAdp)) agg.bestAdp = s.adp.rank;
+    if (s.adp){ const w=dcWeight(s.adp.rank); agg.dcPoss+=w*s.gamesPossible; agg.dcLost+=w*s.gm; }
+    agg.seasonsPlayed++; agg.gp+=s.gp; agg.gm+=s.gm; agg.gamesPossible+=s.gamesPossible;
+    ['Q','D','O','IR'].forEach(k=>agg.listed[k]+=s.listed[k]);
+    agg.listedWeighted+=s.listedWeighted; agg.ptsLost+=s.ptsLost; agg.injCount+=s.injCount; if(s.hadIR) agg.irSeasons++;
+    s.injuries.forEach(i=>agg.injuries.push({...i,season:y}));
+  });
+  agg.listedTotal = agg.listed.Q+agg.listed.D+agg.listed.O+agg.listed.IR;
+  agg.ptsLost = +agg.ptsLost.toFixed(1);
+  agg.availability = agg.gamesPossible ? agg.gp/agg.gamesPossible : 1;
+  agg.dcRate = agg.dcPoss ? agg.dcLost/agg.dcPoss : null;
+  agg.score = score(agg);
+  return agg;
+}
+function score(a){ const w = state.weights; return +(w.gm*a.gm + w.wk*a.listedWeighted + w.pts*a.ptsLost/10).toFixed(1); }
+
+/* ---------- helpers ---------- */
+const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt1 = n => (Math.round(n*10)/10).toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
+const pct = n => Math.round(n*100)+'%';
+function stripHTML(s){
+  if (!s) return '<span class="muted small">—</span>';
+  return '<span class="strip" aria-label="Weekly availability">' + s.weeks.map(w=>{
+    const t = w.status==='BYE' ? `Wk ${w.wk}: bye` : w.status==='FUT' ? `Wk ${w.wk}: upcoming` : w.status==='NR' ? `Wk ${w.wk}: not rostered` : w.status==='SUS' ? `Wk ${w.wk}: suspended / exempt` : w.status==='DNP' ? `Wk ${w.wk}: did not play (no report entry)` : `Wk ${w.wk}: ${w.status==='H'?'healthy':w.status+(w.inj?' · '+w.inj:'')}${w.played?'':' · DNP'}`;
+    const dim = weekRangeActive() && (w.wk<state.wkFrom || w.wk>state.wkTo) ? ' dim' : '';
+    return `<i class="${w.status}${dim}" title="${esc(t)}"></i>`;
+  }).join('') + '</span>';
+}
+function pill(st){ const l = {H:'Healthy',Q:'Questionable',D:'Doubtful',O:'Out',IR:'IR'}[st]||st; return `<span class="pill ${st}">${l}</span>`; }
+function legend(){ return `<div class="legend"><span><i style="background:var(--h)"></i>Played</span><span><i style="background:var(--q)"></i>Questionable</span><span><i style="background:var(--d)"></i>Doubtful</span><span><i style="background:var(--o)"></i>Out</span><span><i style="background:var(--ir)"></i>IR</span><span><i style="background:var(--bye)"></i>Bye</span><span><i style="background:var(--fut)"></i>Upcoming</span><span><i style="background:#8e98a3"></i>DNP (no report)</span><span><i style="border:1px dashed #b5bcc4"></i>Not rostered / suspended</span></div>`; }
+function injSummary(injuries, max=3){
+  if (!injuries.length) return '<span class="muted">none</span>';
+  const parts = injuries.slice(0,max).map(i=>`${i.season?i.season+' ':''}Wk${i.week} ${esc(i.type)}${i.missed?` (−${i.missed})`:''}`);
+  return parts.join(' · ') + (injuries.length>max?` <span class="muted">+${injuries.length-max}</span>`:'');
+}
+function adpControl(){ return `<div class="field"><label>Preseason ADP</label><div class="seg" role="group" aria-label="ADP filter">${ADP_TIERS.map(([k,l])=>`<button data-adp="${k}" aria-pressed="${state.adpTop===k}">${l}</button>`).join('')}</div></div>`; }
+function adpCell(s){ return s && s.adp ? `<span class="num">${s.adp.rank}</span> <span class="muted small">(${fmt1(s.adp.pick)}${s.adp.posRank?' · '+s.adp.posRank:''})</span>` : '<span class="muted">—</span>'; }
+function adpNote(){ return state.adpTop==='all' ? '' : ` Only player-seasons with a preseason ADP inside the top ${state.adpTop} (overall, drafts before preseason game 1) are counted - so the numbers answer "how much did top-${state.adpTop} picks miss".`; }
+function sortArrow(key){ return state.sort.key===key ? `<span class="arrow">${state.sort.dir<0?'▼':'▲'}</span>` : ''; }
+function sortRows(rows, getters){
+  const g = getters[state.sort.key]; if(!g) return rows;
+  return rows.slice().sort((a,b)=>{ const va=g(a), vb=g(b); if (typeof va==='string') return state.sort.dir*va.localeCompare(vb); return state.sort.dir*(va-vb); });
+}
+
+/* ---------- tiny SVG charts ---------- */
+function barChart(series, opts={}){
+  // series: [{label, values:[{key,value,color}]}]  grouped bars
+  const W = opts.width||640, H = opts.height||200, padL=34, padB=24, padT=10, padR=6;
+  const groups = series.length; const per = series[0]?series[0].values.length:1;
+  const max = Math.max(1, ...series.flatMap(s=>s.values.map(v=>v.value)));
+  const gw = (W-padL-padR)/groups, bw = Math.max(2,(gw-6)/per);
+  const y = v => padT + (H-padT-padB)*(1-v/max);
+  let out = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opts.title||'bar chart')}">`;
+  const ticks = 4; for (let i=0;i<=ticks;i++){ const v = max*i/ticks; out += `<line class="axis" x1="${padL}" x2="${W-padR}" y1="${y(v)}" y2="${y(v)}"/><text x="${padL-4}" y="${y(v)+3}" text-anchor="end">${Math.round(v*10)/10}</text>`; }
+  series.forEach((s,gi)=>{
+    s.values.forEach((v,vi)=>{
+      const x = padL + gi*gw + 3 + vi*bw;
+      out += `<rect x="${x}" y="${y(v.value)}" width="${bw-1}" height="${(H-padB)-y(v.value)}" fill="${v.color}"><title>${esc(s.label)} · ${esc(v.key)}: ${v.value}</title></rect>`;
+    });
+    out += `<text x="${padL + gi*gw + gw/2}" y="${H-8}" text-anchor="middle">${esc(s.label)}</text>`;
+  });
+  return out + '</svg>';
+}
+
+/* =====================================================================
+   VIEWS
+   ===================================================================== */
+const VIEWS = [
+  ['overview','Overview'],['compare','Player comparison'],['seasons','Season vs. season'],['league','League ranking'],['data','Data & import']
+];
+
+function render(){
+  document.getElementById('nav').innerHTML = VIEWS.map(([k,l])=>`<button role="tab" aria-selected="${state.view===k}" data-view="${k}">${l}</button>`).join('');
+  const app = document.getElementById('app');
+  const banner = DATA_SOURCE==='synthetic'
+    ? `<div class="banner"><strong>Prototype with synthetic sample data.</strong> Names, positions and Sleeper IDs are real; every injury event is generated for demonstration. Place a <code>dataset.json</code> from the nflverse pipeline next to this file to load real data. Current season: ${CURRENT_SEASON}, ${CURRENT_WEEK} weeks played.</div>`
+    : `<div class="banner" style="background:#e4f5ea;border-color:#b4dec3;color:#1f5a35"><strong>Live dataset loaded.</strong> ${esc(DATA_SOURCE)} · ${PLAYERS.length} players · season ${CURRENT_SEASON}, ${CURRENT_WEEK} weeks played.</div>`;
+  app.innerHTML = banner + ({overview:viewOverview, compare:viewCompare, seasons:viewSeasons, league:viewLeague, data:viewData}[state.view])();
+  bind();
+}
+
+/* ---- Overview ---- */
+function viewOverview(){
+  const seasons = seasonsForScope(state.season);
+  const scopeLabel = state.season==='career' ? 'career' : state.season==='career3' ? 'last 3 seasons' : state.season==='career5' ? 'last 5 seasons' : state.season;
+  let rows = PLAYERS.filter(p=> (state.pos==='ALL'||p.pos===state.pos) && (!state.q || p.name.toLowerCase().includes(state.q.toLowerCase()) || p.team.toLowerCase()===state.q.toLowerCase()))
+    .map(p=>({p, a:aggregate(p,seasons)})).filter(r=>r.a.seasonsPlayed>0);
+  rows = sortRows(rows, {name:r=>r.p.name, pos:r=>r.p.pos, adp:r=>single?(r.p.seasons[seasons[0]].adp?r.p.seasons[seasons[0]].adp.rank:9999):(r.a.bestAdp||9999), gm:r=>r.a.gm, gp:r=>r.a.gp, listed:r=>r.a.listedTotal, pts:r=>r.a.ptsLost, inj:r=>r.a.injCount, score:r=>r.a.score, avail:r=>r.a.availability, dc:r=>r.a.dcLost});
+  const single = seasons.length===1;
+  const tot = rows.reduce((t,r)=>{t.gm+=r.a.gm;t.pts+=r.a.ptsLost;t.ir+=r.a.listed.IR;t.cur+= (r.p.current.status!=='H'?1:0);return t},{gm:0,pts:0,ir:0,cur:0});
+  const maxScore = Math.max(1,...rows.map(r=>r.a.score));
+  return `
+  <div class="toolbar">
+    <div class="field"><label for="seasonSel">Scope</label><select id="seasonSel">${SEASONS.slice().reverse().map(y=>`<option value="${y}" ${state.season==String(y)?'selected':''}>${y}${y===CURRENT_SEASON?' (in progress)':''}</option>`).join('')}<option value="career3" ${state.season==='career3'?'selected':''}>Last 3 seasons</option><option value="career5" ${state.season==='career5'?'selected':''}>Last 5 seasons</option><option value="career" ${state.season==='career'?'selected':''}>Career (2016+)</option></select></div>
+    <div class="field"><label>Position</label><div class="seg" role="group" aria-label="Position filter">${['ALL','QB','RB','WR','TE'].map(x=>`<button data-pos="${x}" aria-pressed="${state.pos===x}">${x}</button>`).join('')}</div></div>
+    ${adpControl()}
+    ${weekControl()}
+    <div class="field"><label for="q">Search</label><input id="q" type="search" placeholder="Player or team…" value="${esc(state.q)}"></div>
+  </div>
+  <div class="cards">
+    <div class="card kpi"><div class="lbl">Players tracked</div><div class="val">${rows.length}</div><div class="delta">${scopeLabel}${state.adpTop!=='all'?' · ADP top '+state.adpTop:''}</div></div>
+    <div class="card kpi"><div class="lbl">Games missed</div><div class="val">${tot.gm}</div><div class="delta">${rows.length?fmt1(tot.gm/rows.length):0} per player</div></div>
+    <div class="card kpi"><div class="lbl">Fantasy pts lost</div><div class="val">${Math.round(tot.pts).toLocaleString()}</div><div class="delta">at each player's PPG</div></div>
+    <div class="card kpi"><div class="lbl">IR weeks</div><div class="val">${tot.ir}</div><div class="delta">across the scope</div></div>
+    <div class="card kpi"><div class="lbl">Currently flagged</div><div class="val">${tot.cur}</div><div class="delta">Week ${CURRENT_WEEK+1} designations</div></div>
+  </div>
+  <div class="tablewrap"><table>
+    <thead><tr>
+      <th class="rank">#</th>
+      <th class="sortable" data-sort="name">Player${sortArrow('name')}</th>
+      <th class="sortable" data-sort="pos">Pos${sortArrow('pos')}</th>
+      <th class="sortable" data-sort="adp" title="Preseason ADP: overall rank (avg pick · position rank)">${single?'ADP':'Best ADP'}${sortArrow('adp')}</th>
+      <th>Now</th>
+      <th>${single?'Availability by week':'Avg availability'}</th>
+      <th class="r sortable" data-sort="gm">GM${sortArrow('gm')}</th>
+      <th class="r sortable" data-sort="gp">GP${sortArrow('gp')}</th>
+      <th class="r sortable" data-sort="listed">Q / D / O / IR${sortArrow('listed')}</th>
+      <th class="r sortable" data-sort="pts">Pts lost${sortArrow('pts')}</th>
+      <th class="r sortable" data-sort="inj">Injuries${sortArrow('inj')}</th>
+      <th class="r sortable" data-sort="score">Injury load${sortArrow('score')}</th>
+      <th class="r sortable" data-sort="dc" title="Draft capital lost = pick weight x games missed (in '1.01-games'); the share is the capital-weighted miss rate">DC lost${sortArrow('dc')}</th>
+    </tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr class="clickable" tabindex="0" data-player="${r.p.id}" title="Open in player comparison">
+      <td class="rank">${i+1}</td>
+      <td><strong>${esc(r.p.name)}</strong> <span class="muted small">${r.p.team}</span></td>
+      <td><span class="pos ${r.p.pos}">${r.p.pos}</span></td>
+      <td>${single ? adpCell(r.p.seasons[seasons[0]]) : (r.a.bestAdp ? `<span class="num">${r.a.bestAdp}</span> <span class="muted small">(${r.a.seasonsPlayed} ssn)</span>` : '<span class="muted">—</span>')}</td>
+      <td>${pill(r.p.current.status)}${r.p.current.inj?` <span class="muted small">${esc(r.p.current.inj)}</span>`:''}</td>
+      <td>${single ? stripHTML(r.p.seasons[seasons[0]]) : `<div class="bar" title="${pct(r.a.availability)} of possible games played"><i style="width:${pct(r.a.availability)};background:var(--h)"></i></div><span class="small num">${pct(r.a.availability)}</span>`}</td>
+      <td class="r num">${r.a.gm}</td><td class="r num">${r.a.gp}</td>
+      <td class="r num">${r.a.listed.Q} / ${r.a.listed.D} / ${r.a.listed.O} / ${r.a.listed.IR}</td>
+      <td class="r num">${fmt1(r.a.ptsLost)}</td>
+      <td class="r num" title="${esc(injSummary(r.a.injuries,6).replace(/<[^>]+>/g,''))}">${r.a.injCount}</td>
+      <td class="r"><div class="scorecell"><div class="bar"><i style="width:${pct(r.a.score/maxScore)}"></i></div><span class="num">${fmt1(r.a.score)}</span></div></td>
+      <td class="r num">${r.a.dcPoss ? fmt1(r.a.dcLost)+' <span class="muted small">'+pct(r.a.dcRate)+'</span>' : '<span class="muted">—</span>'}</td>
+    </tr>`).join('') || `<tr><td colspan="13" class="empty">No players match${state.adpTop!=='all'?' the top-'+state.adpTop+' ADP filter in this scope':''}.</td></tr>`}</tbody>
+  </table></div>
+  ${legend()}
+  <p class="footer-note">GM = games missed, GP = games played (bye weeks excluded). Injury load = ${state.weights.gm}×GM + ${state.weights.wk}×weighted listed weeks (Q 0.25 · D 0.5 · O 1 · IR 1) + ${state.weights.pts}×points lost ÷ 10. DC lost = draft-capital weight of the pick × games missed (a 1.01 missing a full season ≈ 17; a pick 100 missing it ≈ 1.2) - see “Data &amp; import”.${adpNote()}${weekNote()} Click a row to open the player in the comparison view.</p>`;
+}
+
+/* ---- Player comparison ---- */
+const PALETTE = ['#0f3d5e','#c8323a','#e0a100','#2f9e6b'];
+function viewCompare(){
+  const sel = state.compare.map(id=>BY_ID[id]).filter(Boolean);
+  const chartSeries = SEASONS.map(y=>({label:String(y).slice(2), values: sel.map((p,i)=>({key:p.name, value: p.seasons[y]?M(p.seasons[y]).gm:0, color:PALETTE[i]}))}));
+  const careers = sel.map(p=>({p, a:aggregate(p,SEASONS)}));
+  return `
+  <div class="toolbar">
+    <div class="field" style="flex:1;min-width:260px"><label for="addPlayer">Add player (max 4)</label>
+      <div class="suggest"><input id="addPlayer" type="search" placeholder="Type a name…" autocomplete="off" ${sel.length>=4?'disabled':''}><ul id="suggestList" hidden></ul></div></div>
+    ${weekControl()}
+    <div class="field"><label>Selected</label><div class="chips">${sel.map((p,i)=>`<span class="chip" style="border-color:${PALETTE[i]}"><span style="width:8px;height:8px;border-radius:50%;background:${PALETTE[i]};display:inline-block"></span>${esc(p.name)}<button data-remove="${p.id}" aria-label="Remove ${esc(p.name)}">×</button></span>`).join('') || '<span class="muted">none</span>'}</div></div>
+  </div>
+  ${sel.length ? `
+  <div class="card"><h3>Games missed per season${weekRangeActive()?` (weeks ${state.wkFrom}–${state.wkTo})`:''}</h3>${barChart(chartSeries,{height:220,title:'Games missed per season'})}</div>
+  <h2>Career totals (2016 – ${CURRENT_SEASON})</h2>
+  <div class="tablewrap"><table><thead><tr><th>Player</th><th class="r">Seasons</th><th class="r">GP</th><th class="r">GM</th><th class="r">Availability</th><th class="r">Q / D / O / IR</th><th class="r">Injuries</th><th class="r">Seasons w/ IR</th><th class="r">Pts lost</th><th class="r">Injury load</th><th class="r">Load / season</th></tr></thead>
+  <tbody>${careers.map(({p,a},i)=>`<tr><td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${PALETTE[i]};margin-right:6px"></span><strong>${esc(p.name)}</strong> <span class="pos ${p.pos}">${p.pos}</span></td><td class="r num">${a.seasonsPlayed}</td><td class="r num">${a.gp}</td><td class="r num">${a.gm}</td><td class="r num">${pct(a.availability)}</td><td class="r num">${a.listed.Q} / ${a.listed.D} / ${a.listed.O} / ${a.listed.IR}</td><td class="r num">${a.injCount}</td><td class="r num">${a.irSeasons}</td><td class="r num">${fmt1(a.ptsLost)}</td><td class="r num">${fmt1(a.score)}</td><td class="r num">${fmt1(a.score/Math.max(1,a.seasonsPlayed))}</td></tr>`).join('')}</tbody></table></div>
+  <h2>Season-by-season timeline</h2>
+  <div class="${sel.length===1?'':'grid2'}">${sel.map((p,i)=>`<div class="card"><h3 style="color:${PALETTE[i]}">${esc(p.name)} · ${p.pos} · ${p.team}</h3>
+    ${SEASONS.slice().reverse().map(y=>{const s=M(p.seasons[y]); if(!s) return ''; return `<div class="season-row"><span class="yr">${y}</span><span>${stripHTML(s)}</span><span class="meta" title="preseason ADP · games missed · weeks listed · points lost">${s.adp?`ADP ${s.adp.rank} · `:''}${s.gm} GM · ${s.listedTotal} wk · ${fmt1(s.ptsLost)} pts</span></div>`;}).join('')}
+    <details style="margin-top:8px"><summary class="small">Injury log (${aggregate(p,SEASONS).injCount})</summary><ul class="small muted" style="margin:6px 0 0;padding-left:18px">${aggregate(p,SEASONS).injuries.filter(x=>!(x.season===CURRENT_SEASON&&x.week>CURRENT_WEEK)).map(x=>`<li>${x.season} Wk ${x.week}: ${esc(x.type)} — ${x.sev==='major'?'IR / long-term':x.sev==='mod'?'multi-week':'minor'}, missed ${x.missed}, listed ${x.listed} wk</li>`).join('')}</ul></details>
+  </div>`).join('')}</div>
+  ${legend()}` : '<div class="card empty">Add a player to start comparing.</div>'}`;
+}
+
+/* ---- Season vs season ---- */
+function viewSeasons(){
+  const A = state.seasonA, B = state.seasonB;
+  const stat = y => {
+    const ps = PLAYERS.filter(p=>p.seasons[y] && adpOk(p.seasons[y], state.adpTop));
+    const r = {n:ps.length, gm:0, pts:0, ir:0, listed:0, byPos:{}, top:[]};
+    ps.forEach(p=>{const s=M(p.seasons[y]); r.gm+=s.gm; r.pts+=s.ptsLost; r.ir+=s.hadIR?1:0; r.listed+=s.listedTotal;
+      const bp = r.byPos[p.pos] = r.byPos[p.pos]||{n:0,gm:0,pts:0,ir:0}; bp.n++; bp.gm+=s.gm; bp.pts+=s.ptsLost; bp.ir+=s.hadIR?1:0;
+      r.top.push({p, s, score:score(s)});});
+    r.top.sort((a,b)=>b.score-a.score);
+    return r;
+  };
+  const a = stat(A), b = stat(B);
+  const SI = seasonIndexTable(); const siA = SI.rows.find(r=>r.y===A), siB = SI.rows.find(r=>r.y===B);
+  const siChart = SI.rows.map(r=>({label:String(r.y).slice(2), values:[{key:'capital-weighted miss rate %', value:+(r.rate*100).toFixed(1), color: r.y===A?'#c8323a':r.y===B?'#0f3d5e':'#9aa5b1'}]}));
+  const d = (x,y,inv) => { const diff = x-y; const cls = diff===0?'':(diff>0)!==!!inv?'up':'down'; return `<span class="delta ${cls}">${diff>0?'+':''}${typeof x==='number'&&!Number.isInteger(diff)?fmt1(diff):diff} vs ${B}</span>`; };
+  const trend = SEASONS.map(y=>{const r=stat(y); return {label:String(y).slice(2), values:[{key:'GM per player', value:+(r.gm/Math.max(1,r.n)).toFixed(2), color: y===A?'#c8323a':y===B?'#0f3d5e':'#9aa5b1'}]};});
+  const posOrder = ['QB','RB','WR','TE'];
+  const sidelined = (y,w) => PLAYERS.filter(p=>p.seasons[y] && adpOk(p.seasons[y],state.adpTop)).reduce((n,p)=>{ const r=p.seasons[y].weeks[w-1]; return n + (r && !r.played && !EXCLUDED.has(r.status) ? 1 : 0); },0);
+  const byWeek = Array.from({length:MAX_WEEKS},(_,i)=>i+1).map(w=>{ const inWin = w>=state.wkFrom && w<=state.wkTo; return {label:String(w), values:[{key:String(A), value:sidelined(A,w), color:inWin?'#c8323a':'#e9c3c5'},{key:String(B), value:sidelined(B,w), color:inWin?'#0f3d5e':'#bfd0dd'}]}; });
+  const sel = (id,val) => `<select id="${id}">${SEASONS.slice().reverse().map(y=>`<option value="${y}" ${y===val?'selected':''}>${y}${y===CURRENT_SEASON?' (in progress)':''}</option>`).join('')}</select>`;
+  return `
+  <div class="toolbar">
+    <div class="field"><label for="seasonA">Season A</label>${sel('seasonA',A)}</div>
+    <div class="field"><label for="seasonB">Season B (baseline)</label>${sel('seasonB',B)}</div>
+    <button class="btn ghost" id="swapSeasons">Swap</button>
+    ${adpControl()}
+    ${weekControl()}
+    ${A===CURRENT_SEASON||B===CURRENT_SEASON?`<span class="muted small">${CURRENT_SEASON} contains only ${CURRENT_WEEK} weeks — compare per-game rates, not totals.</span>`:''}
+  </div>
+  <div class="cards">
+    <div class="card kpi"><div class="lbl">Games missed · ${A}${weekRangeActive()?` · wk ${state.wkFrom}–${state.wkTo}`:''}</div><div class="val">${a.gm}</div>${d(a.gm,b.gm)}</div>
+    <div class="card kpi"><div class="lbl">GM per player · ${A}</div><div class="val">${fmt1(a.gm/Math.max(1,a.n))}</div>${d(+(a.gm/Math.max(1,a.n)).toFixed(1),+(b.gm/Math.max(1,b.n)).toFixed(1))}</div>
+    <div class="card kpi"><div class="lbl">Players with IR stint · ${A}</div><div class="val">${a.ir}<span class="muted" style="font-size:14px">/${a.n}</span></div>${d(a.ir,b.ir)}</div>
+    <div class="card kpi"><div class="lbl">Weeks on report · ${A}</div><div class="val">${a.listed}</div>${d(a.listed,b.listed)}</div>
+    <div class="card kpi"><div class="lbl">Fantasy pts lost · ${A}</div><div class="val">${Math.round(a.pts).toLocaleString()}</div>${d(Math.round(a.pts),Math.round(b.pts))}</div>
+    <div class="card kpi" style="border-color:var(--accent)"><div class="lbl">Injury Index · ${A}</div><div class="val">${siA&&siA.index!==null?Math.round(siA.index):'—'}</div><div class="delta ${siA&&siB&&siA.rate>siB.rate?'up':siA&&siB&&siA.rate<siB.rate?'down':''}">${siA&&siB&&siA.rate!==null&&siB.rate!==null?`${fmt1(siA.rate*100)}% vs ${fmt1(siB.rate*100)}% capital sidelined (${B})`:'needs ADP data'}</div></div>
+  </div>
+  <div class="card" style="margin-bottom:14px"><h3>Season Injury Index · draft-capital-weighted miss rate (100 = average of completed seasons)</h3>
+    <div class="grid2">
+      <div>${barChart(siChart,{height:190,title:'Capital-weighted miss rate by season'})}<p class="small muted" style="margin:6px 0 0">% of invested draft capital that was sidelined. Each player-season is weighted by w(ADP) = (12/(ADP+11))^${state.beta}, so a lost season from the 1.01 counts ~${fmt1(1/dcWeight(24))}× a lost season from pick 24 and ~${Math.round(1/dcWeight(100))}× one from pick 100. Baseline ${SI.baseline!==null?fmt1(SI.baseline*100)+'%':'—'}.</p></div>
+      <table style="min-width:0"><thead><tr><th>Season</th><th class="r">Players w/ ADP</th><th class="r">Capital sidelined</th><th class="r">Index</th><th>Verdict</th></tr></thead><tbody>
+      ${SI.rows.slice().reverse().map(r=>`<tr ${r.y===A||r.y===B?'style="font-weight:600"':''}><td class="num">${r.y}${r.y===CURRENT_SEASON?' <span class="muted small">(partial)</span>':''}</td><td class="r num">${r.n}</td><td class="r num">${r.rate!==null?fmt1(r.rate*100)+'%':'—'}</td><td class="r num">${r.index!==null?Math.round(r.index):'—'}</td><td class="small ${r.index>110?'delta up':r.index<90?'delta down':'muted'}">${r.index===null?'—':r.index>120?'much worse than usual':r.index>110?'worse than usual':r.index<80?'much better than usual':r.index<90?'better than usual':'about average'}</td></tr>`).join('')}
+      </tbody></table>
+    </div></div>
+  <div class="grid2">
+    <div class="card"><h3>Games missed per tracked player, all seasons</h3>${barChart(trend,{height:200,title:'Trend'})}<p class="small muted" style="margin:6px 0 0">Red = Season A, blue = Season B.</p></div>
+    <div class="card"><h3>By position</h3><table style="min-width:0"><thead><tr><th>Pos</th><th class="r">Players</th><th class="r">GM ${A}</th><th class="r">GM ${B}</th><th class="r">GM/player ${A}</th><th class="r">GM/player ${B}</th><th class="r">IR ${A}</th><th class="r">IR ${B}</th></tr></thead>
+    <tbody>${posOrder.map(pos=>{const x=a.byPos[pos]||{n:0,gm:0,ir:0}, y=b.byPos[pos]||{n:0,gm:0,ir:0}; return `<tr><td><span class="pos ${pos}">${pos}</span></td><td class="r num">${x.n}</td><td class="r num">${x.gm}</td><td class="r num">${y.gm}</td><td class="r num">${fmt1(x.gm/Math.max(1,x.n))}</td><td class="r num">${fmt1(y.gm/Math.max(1,y.n))}</td><td class="r num">${x.ir}</td><td class="r num">${y.ir}</td></tr>`;}).join('')}</tbody></table></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Players sidelined by week · ${A} vs ${B}</h3>${barChart(byWeek,{height:180,title:'Sidelined players by week'})}<p class="small muted" style="margin:6px 0 0">Red = ${A}, blue = ${B}. Counts tracked players who did not play that week for a non-bye reason (O / D / IR / DNP). Weeks outside the selected window are shown faded.</p></div>
+  <div class="grid2" style="margin-top:14px">
+    ${[[A,a],[B,b]].map(([y,r])=>`<div class="card"><h3>Most injury-ridden · ${y}</h3>${r.top.slice(0,8).map((t,i)=>`<div class="season-row"><span class="yr">${i+1}.</span><span><strong>${esc(t.p.name)}</strong> <span class="pos ${t.p.pos}">${t.p.pos}</span>${t.s.adp?` <span class="muted small">ADP ${t.s.adp.rank}</span>`:''}<br>${stripHTML(t.s)}</span><span class="meta">${t.s.gm} GM · ${fmt1(t.score)} load</span></div>`).join('')}</div>`).join('')}
+  </div>
+  <h2>Player deltas ${A} vs ${B}</h2>${state.adpTop!=='all'?`<p class="small muted" style="margin:-4px 0 8px">Players inside the top ${state.adpTop} by ADP in <em>both</em> seasons.</p>`:''}
+  <div class="tablewrap"><table><thead><tr><th>Player</th><th>Pos</th><th class="r">ADP ${A}</th><th class="r">ADP ${B}</th><th class="r">GM ${A}</th><th class="r">GM ${B}</th><th class="r">Δ GM</th><th class="r">Pts lost ${A}</th><th class="r">Pts lost ${B}</th><th class="r">Load ${A}</th><th class="r">Load ${B}</th><th class="r">Δ Load</th></tr></thead>
+  <tbody>${PLAYERS.filter(p=>p.seasons[A]&&p.seasons[B]&&adpOk(p.seasons[A],state.adpTop)&&adpOk(p.seasons[B],state.adpTop)).map(p=>({p,sa:M(p.seasons[A]),sb:M(p.seasons[B])})).map(r=>({...r,dl:score(r.sa)-score(r.sb)})).sort((x,y)=>y.dl-x.dl).map(r=>`<tr><td><strong>${esc(r.p.name)}</strong></td><td><span class="pos ${r.p.pos}">${r.p.pos}</span></td><td class="r num">${r.sa.adp?r.sa.adp.rank:'—'}</td><td class="r num">${r.sb.adp?r.sb.adp.rank:'—'}</td><td class="r num">${r.sa.gm}</td><td class="r num">${r.sb.gm}</td><td class="r num ${r.sa.gm-r.sb.gm>0?'delta up':r.sa.gm-r.sb.gm<0?'delta down':''}">${r.sa.gm-r.sb.gm>0?'+':''}${r.sa.gm-r.sb.gm}</td><td class="r num">${fmt1(r.sa.ptsLost)}</td><td class="r num">${fmt1(r.sb.ptsLost)}</td><td class="r num">${fmt1(score(r.sa))}</td><td class="r num">${fmt1(score(r.sb))}</td><td class="r num ${r.dl>0?'delta up':r.dl<0?'delta down':''}">${r.dl>0?'+':''}${fmt1(r.dl)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+/* ---- League ranking ---- */
+function viewLeague(){
+  const L = state.league;
+  const scopes = [['2026','2026 so far'],['2025','2025'],['career3','Last 3 seasons'],['career5','Last 5 seasons'],['career','Career']];
+  let body = '';
+  if (L){
+    const seasons = seasonsForScope(state.leagueScope);
+    const teams = L.teams.map(t=>{
+      const players = t.playerIds.map(id=>BY_ID[id]).filter(Boolean).map(p=>({p,a:aggregate(p,seasons)})).filter(x=>x.a.seasonsPlayed>0).sort((x,y)=>y.a.score-x.a.score);
+      const tot = players.reduce((s,x)=>{s.gm+=x.a.gm;s.pts+=x.a.ptsLost;s.listed+=x.a.listedTotal;s.score+=x.a.score;s.gp+=x.a.gp;s.poss+=x.a.gamesPossible;return s},{gm:0,pts:0,listed:0,score:0,gp:0,poss:0});
+      const flagged = players.filter(x=>x.p.current.status!=='H').length;
+      const unmatched = t.playerIds.filter(id=>!BY_ID[id]);
+      const dcLost = players.reduce((n,x)=>n+x.a.dcLost,0), dcPoss = players.reduce((n,x)=>n+x.a.dcPoss,0);
+      return {t, players, tot, flagged, unmatched, avg: players.length? tot.score/players.length : 0, dcLost, dcPoss, dcRate: dcPoss?dcLost/dcPoss:0};
+    });
+    const byDc = state.leagueRank==='dc';
+    const ranked = teams.slice().sort((a,b)=> byDc ? b.dcRate-a.dcRate : b.avg-a.avg);
+    const maxAvg = Math.max(1,...ranked.map(x=>x.avg)); const maxDc = Math.max(0.01,...ranked.map(x=>x.dcRate));
+    const allPlayers = teams.flatMap(t=>t.players.map(x=>({...x, team:t.t.name}))).sort((a,b)=>b.a.score-a.a.score);
+    const unmatchedTotal = teams.reduce((n,t)=>n+t.unmatched.length,0);
+    body = `
+    <div class="cards">
+      <div class="card kpi"><div class="lbl">League</div><div class="val" style="font-size:16px;font-family:Inter">${esc(L.name)}</div><div class="delta">${L.teams.length} teams · ${esc(L.source)}</div></div>
+      <div class="card kpi"><div class="lbl">Most injury-ridden team</div><div class="val" style="font-size:16px;font-family:Inter">${ranked[0]?esc(ranked[0].t.name):'—'}</div><div class="delta">${ranked[0]? (byDc? pct(ranked[0].dcRate)+' of draft capital sidelined' : 'avg load '+fmt1(ranked[0].avg)+' per player'):'—'}</div></div>
+      <div class="card kpi"><div class="lbl">Healthiest team</div><div class="val" style="font-size:16px;font-family:Inter">${ranked.length?esc(ranked[ranked.length-1].t.name):'—'}</div><div class="delta">${ranked.length? (byDc? pct(ranked[ranked.length-1].dcRate)+' of draft capital sidelined' : 'avg load '+fmt1(ranked[ranked.length-1].avg)+' per player'):'—'}</div></div>
+      <div class="card kpi"><div class="lbl">Matched players</div><div class="val">${allPlayers.length}</div><div class="delta">${unmatchedTotal} without injury history in this dataset</div></div>
+    </div>
+    <h2>Team ranking (${byDc?'most draft capital sidelined first':'highest injury load first'})</h2>
+    <div class="tablewrap"><table><thead><tr><th class="rank">#</th><th>Team</th><th class="r">Matched</th><th class="r">Flagged now</th><th class="r">GM</th><th class="r">Availability</th><th class="r">Weeks on report</th><th class="r">Pts lost</th><th class="r">Total load</th><th class="r">Avg load / player</th><th class="r" title="sum of pick weight x games missed">DC lost</th><th class="r" title="draft-capital-weighted miss rate">Capital sidelined</th></tr></thead>
+    <tbody>${ranked.map((x,i)=>`<tr class="clickable ${state.expanded===x.t.id?'expanded':''}" tabindex="0" data-team="${x.t.id}" aria-expanded="${state.expanded===x.t.id}">
+      <td class="rank">${i+1}</td><td><strong>${esc(x.t.name)}</strong>${x.t.owner?` <span class="muted small">${esc(x.t.owner)}</span>`:''}</td>
+      <td class="r num">${x.players.length}${x.unmatched.length?` <span class="muted">(+${x.unmatched.length} n/a)</span>`:''}</td>
+      <td class="r num">${x.flagged}</td><td class="r num">${x.tot.gm}</td><td class="r num">${x.tot.poss?pct(x.tot.gp/x.tot.poss):'—'}</td><td class="r num">${x.tot.listed}</td><td class="r num">${fmt1(x.tot.pts)}</td><td class="r num">${fmt1(x.tot.score)}</td>
+      <td class="r">${byDc?`<span class="num">${fmt1(x.avg)}</span>`:`<div class="scorecell"><div class="bar"><i style="width:${pct(x.avg/maxAvg)}"></i></div><span class="num">${fmt1(x.avg)}</span></div>`}</td>
+      <td class="r num">${fmt1(x.dcLost)}</td>
+      <td class="r">${byDc?`<div class="scorecell"><div class="bar"><i style="width:${pct(x.dcRate/maxDc)}"></i></div><span class="num">${pct(x.dcRate)}</span></div>`:`<span class="num">${x.dcPoss?pct(x.dcRate):'—'}</span>`}</td></tr>
+      ${state.expanded===x.t.id?`<tr><td colspan="12" style="white-space:normal;background:#faf7f0;padding:10px 14px">
+        <table style="min-width:0"><thead><tr><th>Player</th><th>Pos</th><th>Now</th><th>${seasons.length===1?'Weeks':'Availability'}</th><th class="r">GM</th><th class="r">Q/D/O/IR</th><th class="r">Pts lost</th><th class="r">Load</th><th class="r">ADP</th><th class="r">DC lost</th></tr></thead><tbody>
+        ${x.players.map(y=>`<tr><td><strong>${esc(y.p.name)}</strong></td><td><span class="pos ${y.p.pos}">${y.p.pos}</span></td><td>${pill(y.p.current.status)}</td><td>${seasons.length===1?stripHTML(y.p.seasons[seasons[0]]):`<span class="num small">${pct(y.a.availability)}</span>`}</td><td class="r num">${y.a.gm}</td><td class="r num">${y.a.listed.Q}/${y.a.listed.D}/${y.a.listed.O}/${y.a.listed.IR}</td><td class="r num">${fmt1(y.a.ptsLost)}</td><td class="r num">${fmt1(y.a.score)}</td><td class="r num">${y.a.bestAdp||'—'}</td><td class="r num">${y.a.dcPoss?fmt1(y.a.dcLost):'—'}</td></tr>`).join('')}
+        ${x.unmatched.length?`<tr><td colspan="10" class="muted small">No injury history in dataset for: ${x.unmatched.map(id=>esc(L.names&&L.names[id]||id)).join(', ')}</td></tr>`:''}
+        </tbody></table></td></tr>`:''}`).join('')}</tbody></table></div>
+    <h2>Most injury-ridden players in this league</h2>
+    <div class="tablewrap"><table><thead><tr><th class="rank">#</th><th>Player</th><th>Pos</th><th>Fantasy team</th><th>Now</th><th class="r">GM</th><th class="r">Availability</th><th class="r">Injuries</th><th class="r">Pts lost</th><th class="r">Load</th></tr></thead>
+    <tbody>${allPlayers.slice(0,15).map((y,i)=>`<tr><td class="rank">${i+1}</td><td><strong>${esc(y.p.name)}</strong></td><td><span class="pos ${y.p.pos}">${y.p.pos}</span></td><td>${esc(y.team)}</td><td>${pill(y.p.current.status)}</td><td class="r num">${y.a.gm}</td><td class="r num">${pct(y.a.availability)}</td><td class="r num">${y.a.injCount}</td><td class="r num">${fmt1(y.a.ptsLost)}</td><td class="r num">${fmt1(y.a.score)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  return `
+  <div class="grid2">
+    <div class="card">
+      <h3>Import from Sleeper</h3>
+      <div class="toolbar" style="margin:0">
+        <div class="field" style="flex:1"><label for="leagueId">Sleeper league ID</label><input id="leagueId" type="text" placeholder="e.g. 1124836291409104896" value="${esc(state.leagueId)}"></div>
+        <button class="btn" id="importSleeper" ${state.busy?'disabled':''}>${state.busy?'Importing…':'Import league'}</button>
+        <button class="btn ghost" id="loadDemo">Load demo league</button>
+      </div>
+      <p class="small muted" style="margin:8px 0 0">Find the ID in the league URL: <code>sleeper.com/leagues/<strong>&lt;ID&gt;</strong>/…</code>. Sleeper's read API is public (no login). The import is a browser call to <code>api.sleeper.app</code> — it works when you open this file locally or host it; sandboxed previews without internet will fall back to the demo.</p>
+    </div>
+    <div class="card">
+      <h3>Paste rosters (ESPN / Yahoo / any)</h3>
+      <textarea id="pasteRosters" placeholder="One team per line:&#10;Team Name: Christian McCaffrey, Ja'Marr Chase, Mark Andrews&#10;Another Team: Saquon Barkley, Puka Nacua"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px"><button class="btn" id="importPaste">Build league from text</button><span class="small muted">ESPN and Yahoo require authenticated APIs; copy-paste keeps this file dependency-free.</span></div>
+    </div>
+  </div>
+  ${state.leagueMsg?`<div class="msg ${state.leagueMsg.type}">${state.leagueMsg.text}</div>`:''}
+  ${L?`<div class="toolbar" style="margin-top:16px"><div class="field"><label>Ranking scope</label><div class="seg">${scopes.map(([k,l])=>`<button data-scope="${k}" aria-pressed="${state.leagueScope===k}">${l}</button>`).join('')}</div></div>${adpControl()}${weekControl()}<div class="field"><label>Rank by</label><div class="seg"><button data-lrank="load" aria-pressed="${state.leagueRank==='load'}">Injury load</button><button data-lrank="dc" aria-pressed="${state.leagueRank==='dc'}">Draft capital sidelined</button></div></div><span class="small muted">Teams are ranked by average injury load per matched player, so deep benches are not penalised.${adpNote()}${weekNote()} Click a team to expand.</span></div>${body}`:'<div class="card empty" style="margin-top:16px">Import a Sleeper league or load the demo league to see the ranking.</div>'}`;
+}
+
+/* ---- Data & import ---- */
+function viewData(){
+  const w = state.weights;
+  return `
+  <div class="grid2">
+    <div class="card">
+      <h3>Injury load weights</h3>
+      <div class="weights">
+        <label>Games missed × <strong id="wgmv">${w.gm}</strong><input type="range" min="0" max="3" step="0.25" value="${w.gm}" data-w="gm"></label>
+        <label>Weighted weeks on report × <strong id="wwkv">${w.wk}</strong><input type="range" min="0" max="3" step="0.25" value="${w.wk}" data-w="wk"></label>
+        <label>Fantasy points lost ÷ 10 × <strong id="wptsv">${w.pts}</strong><input type="range" min="0" max="3" step="0.25" value="${w.pts}" data-w="pts"></label>
+      </div>
+      <p class="small muted">ADP filter (Overview, Season vs. season, League ranking): a player-season counts only if the player's preseason ADP - overall rank across all positions, from drafts completed before preseason game 1 - was inside the chosen top-N. In the pipeline this comes from MyFantasyLeague's ADP export (period JULY); the sample data uses synthetic ranks.</p>
+      <h3 style="margin-top:14px">Draft-capital weighting (ADP × games played)</h3>
+      <label class="small" style="display:flex;flex-direction:column;gap:4px;max-width:360px">Decay β = <strong id="wbetav">${state.beta}</strong> (higher = early picks dominate more)<input type="range" min="0.5" max="2" step="0.1" value="${state.beta}" data-beta></label>
+      <table style="min-width:0;margin-top:8px"><thead><tr><th>ADP</th>${[1,6,12,24,36,48,72,100,150].map(r=>`<th class="r">${r}</th>`).join('')}</tr></thead><tbody><tr><td class="small">weight</td>${[1,6,12,24,36,48,72,100,150].map(r=>`<td class="r num">${dcWeight(r).toFixed(2)}</td>`).join('')}</tr></tbody></table>
+      <p class="small muted">Per player-season: <strong>DC lost</strong> = w(ADP) × games missed, measured in “1.01-games” (a 1.01 missing the whole season = 17). Per season / team: <strong>capital sidelined</strong> = Σ w·games missed ÷ Σ w·games possible, i.e. the share of invested draft capital that did not take the field. The <strong>Season Injury Index</strong> rescales that so 100 = the average of completed seasons; 120 means a season was 20 % worse than usual <em>for the players people actually paid for</em>. Being a rate, it is robust to 16 vs 17-game schedules, partial seasons and the week filter; players without ADP are excluded.</p>
+      <p class="small muted">Week filter: restricts every metric (games missed, weeks listed, points lost, injury events, injury load) to the selected week window of each season; e.g. 1–1 shows Week 1 only, 15–17 the fantasy playoffs. Availability strips fade the weeks outside the window.</p>
+      <p class="small muted">Weeks on report are weighted Q 0.25 · D 0.5 · O 1 · IR 1, so a player who plays through “questionable” tags is not scored like one who sits.</p>
+    </div>
+    <div class="card">
+      <h3>Dataset</h3>
+      <p class="small">${PLAYERS.length} players · seasons 2016 – ${CURRENT_SEASON} · ${PLAYERS.reduce((n,p)=>n+Object.keys(p.seasons).length,0)} player-seasons · ${PLAYERS.reduce((n,p)=>n+aggregate(p,SEASONS).injCount,0)} injury events (synthetic).</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" id="exportJson">Export dataset as JSON</button><button class="btn sm ghost" id="exportCsv">Export player-seasons CSV</button></div>
+    </div>
+  </div>
+  <h2>Going live: where real data comes from</h2>
+  <div class="grid3">
+    <div class="card"><h3>Weekly injury reports (2016 → today)</h3><p class="small">The official NFL injury report is published Wed–Fri each week. Historical reports back to ~2009 are archived on team sites and aggregated by Pro-Football-Reference (game logs show DNP + reason), ESPN, Rotowire and FantasyPros. The open-source <code>nflverse</code> project (<code>nflreadr::load_injuries()</code>) provides tidy weekly injury-report data from 2009 onward — the fastest way to backfill 10+ seasons.</p></div>
+    <div class="card"><h3>Games played / points</h3><p class="small">Weekly player stats (snap counts, fantasy points by scoring format) also come from nflverse (<code>load_player_stats()</code>). Games missed = scheduled games minus games with snaps, excluding byes. Points lost = games missed × trailing PPG.</p></div>
+    <div class="card"><h3>Current status</h3><p class="small">Sleeper's <code>/v1/players/nfl</code> endpoint returns <code>injury_status</code>, <code>injury_body_part</code> and <code>injury_start_date</code> for every player — ideal for the “Now” column and free to call. Refresh it once per hour on a tiny backend or GitHub Action and store a daily snapshot to grow your own history.</p></div>
+  </div>
+  <h2>Data model used by this prototype</h2>
+  <div class="card"><pre class="small" style="margin:0;white-space:pre-wrap;font-family:var(--mono)">player { id (Sleeper ID), name, pos, team, rookie, seasons: { 2024: season } }
+season { nWeeks, bye, ppg, weeks: [ { wk, status: H|Q|D|O|IR|BYE|FUT, played, inj } ], injuries: [ { week, type, cls, sev, missed, listed } ] }
+derived { gp, gm, listed{Q,D,O,IR}, listedWeighted, ptsLost, injCount, hadIR, availability, score }</pre></div>
+  <h2>Suggested production stack</h2>
+  <div class="card small">
+    <ol style="margin:0;padding-left:18px;line-height:1.7">
+      <li><strong>Data pipeline</strong>: a scheduled job (GitHub Actions is free) pulls nflverse injury + stats parquet files and Sleeper player status, writes one JSON per player to object storage / a static folder.</li>
+      <li><strong>Frontend</strong>: this file, split into modules (Vite + vanilla or React). No server needed — it reads the static JSON and calls Sleeper directly from the browser.</li>
+      <li><strong>Leagues</strong>: Sleeper via public API; ESPN/Yahoo via OAuth later (both need a small backend to hold tokens) — until then the paste-import covers them.</li>
+      <li><strong>Persistence</strong>: store saved leagues and weight presets in <code>localStorage</code> (disabled in this preview) or a user account later.</li>
+    </ol>
+  </div>`;
+}
+
+/* =====================================================================
+   IMPORTERS
+   ===================================================================== */
+async function importSleeper(id){
+  id = (id||'').trim(); if (!/^\d{6,}$/.test(id)) { state.leagueMsg={type:'err',text:'Please enter a numeric Sleeper league ID.'}; return render(); }
+  state.busy=true; state.leagueMsg={type:'info',text:'Contacting api.sleeper.app…'}; render();
+  const base = 'https://api.sleeper.app/v1/league/'+id;
+  const get = async u => { const r = await fetch(u); if(!r.ok) throw new Error('HTTP '+r.status+' for '+u); return r.json(); };
+  try{
+    const ctrl = new AbortController(); const to = setTimeout(()=>ctrl.abort(),12000);
+    const [lg, users, rosters] = await Promise.all([get(base), get(base+'/users'), get(base+'/rosters')]);
+    clearTimeout(to);
+    if (!lg || !rosters) throw new Error('League not found');
+    const teams = rosters.map(r=>{ const u = (users||[]).find(u=>u.user_id===r.owner_id); return { id:r.roster_id, name:(u&&u.metadata&&u.metadata.team_name)||(u&&u.display_name)||('Team '+r.roster_id), owner:u?u.display_name:'', playerIds:(r.players||[]).map(String) }; });
+    const matched = teams.reduce((n,t)=>n+t.playerIds.filter(x=>BY_ID[x]).length,0);
+    state.league = {name:lg.name||('League '+id), source:'Sleeper · '+(lg.season||''), teams, names:null};
+    state.expanded=null;
+    state.leagueMsg={type:'ok',text:`Imported “${esc(lg.name)}” (${teams.length} teams). ${matched} rostered players have injury history in this dataset.`};
+  }catch(e){
+    state.leagueMsg={type:'err',text:`Live import failed (${esc(e.message||e)}). This happens in sandboxed previews without internet access, or if the league ID is wrong. Open the file locally/hosted and retry, or load the demo league.`};
+  }
+  state.busy=false; render();
+}
+
+function loadDemoLeague(){
+  const rng = mulberry32(2026);
+  const names = ['Hamstring Hustlers','Turf Toe Titans','ACL Avengers','Questionable Decisions','IR Royale','Doubtful Dynasty','Soft Tissue Society','Bubble Wrap Brigade','Full Participation FC','Limited Practice LLC'];
+  const pool = PLAYERS.slice().sort(()=>rng()-0.5);
+  const teams = names.map((n,i)=>({id:i+1,name:n,owner:'',playerIds:[]}));
+  pool.forEach((p,i)=>teams[i%teams.length].playerIds.push(p.id));
+  teams.forEach(t=>{ if (t.id%3===0) t.playerIds.push('9999'+t.id); }); // simulate a few unmatched players
+  state.league = {name:'Demo Dynasty League', source:'demo', teams, names:{99993:'Unknown WR',99996:'Unknown RB',99999:'Unknown K'}};
+  state.expanded=null; state.leagueMsg={type:'ok',text:'Demo league loaded — 10 teams drafted from the sample pool.'}; render();
+}
+
+function normName(s){ return s.toLowerCase().replace(/\b(jr|sr|ii|iii|iv)\b\.?/g,'').replace(/[^a-z ]/g,'').replace(/\s+/g,' ').trim(); }
+function matchName(q){ const n = normName(q); if(!n) return null; let hit = PLAYERS.find(p=>normName(p.name)===n); if(hit) return hit; const last = n.split(' ').pop(); const cands = PLAYERS.filter(p=>normName(p.name).split(' ').pop()===last); if (cands.length===1) return cands[0]; return PLAYERS.find(p=>normName(p.name).includes(n)) || null; }
+function importPaste(text){
+  const lines = text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+  if (!lines.length){ state.leagueMsg={type:'err',text:'Nothing to import — paste at least one line like “Team: Player, Player”.'}; return render(); }
+  const teams=[], names={}; let missing=[];
+  lines.forEach((l,i)=>{ const [tn, rest] = l.includes(':') ? [l.slice(0,l.indexOf(':')), l.slice(l.indexOf(':')+1)] : ['Team '+(i+1), l];
+    const ids = rest.split(/[,;]/).map(s=>s.trim()).filter(Boolean).map((s,j)=>{ const p = matchName(s); if (p) return p.id; const k='x'+i+'_'+j; names[k]=s; missing.push(s); return k; });
+    teams.push({id:i+1,name:tn.trim(),owner:'',playerIds:ids}); });
+  state.league={name:'Pasted league',source:'manual',teams,names}; state.expanded=null;
+  state.leagueMsg={type: missing.length?'info':'ok', text:`Built ${teams.length} team(s). ${missing.length?'Not in dataset: '+esc(missing.slice(0,12).join(', '))+(missing.length>12?'…':''):'All players matched.'}`};
+  render();
+}
+
+function download(name, text, type){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000); }
+
+/* =====================================================================
+   EVENTS
+   ===================================================================== */
+function bind(){
+  document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{state.view=b.dataset.view; render();});
+  const on = (sel, ev, fn) => document.querySelectorAll(sel).forEach(el=>el.addEventListener(ev,fn));
+  // overview
+  on('#seasonSel','change',e=>{state.season=e.target.value; render();});
+  on('[data-pos]','click',e=>{state.pos=e.currentTarget.dataset.pos; render();});
+  on('[data-adp]','click',e=>{state.adpTop=e.currentTarget.dataset.adp; render();});
+  on('#wkFrom','change',e=>{ state.wkFrom=+e.target.value; if(state.wkTo<state.wkFrom) state.wkTo=state.wkFrom; render(); });
+  on('#wkTo','change',e=>{ state.wkTo=+e.target.value; if(state.wkFrom>state.wkTo) state.wkFrom=state.wkTo; render(); });
+  on('#wkReset','click',()=>{ state.wkFrom=1; state.wkTo=MAX_WEEKS; render(); });
+  const q = document.getElementById('q'); if (q){ q.addEventListener('input',e=>{ state.q=e.target.value; const pos=q.selectionStart; render(); const nq=document.getElementById('q'); nq.focus(); nq.setSelectionRange(pos,pos); }); }
+  on('th.sortable','click',e=>{ const k=e.currentTarget.dataset.sort; if(state.sort.key===k) state.sort.dir*=-1; else state.sort={key:k,dir:k==='name'||k==='pos'?1:-1}; render(); });
+  const openPlayer = id => { if(!state.compare.includes(id)){ state.compare = [id, ...state.compare].slice(0,4); } state.view='compare'; render(); };
+  on('tr[data-player]','click',e=>openPlayer(e.currentTarget.dataset.player));
+  on('tr[data-player]','keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openPlayer(e.currentTarget.dataset.player);} });
+  // compare
+  const add = document.getElementById('addPlayer'), list = document.getElementById('suggestList');
+  if (add){
+    let idx=-1, matches=[];
+    const show = () => { const v=add.value.trim().toLowerCase(); matches = v? PLAYERS.filter(p=>!state.compare.includes(p.id)&&p.name.toLowerCase().includes(v)).slice(0,8):[]; list.hidden=!matches.length; idx=matches.length?0:-1;
+      list.innerHTML = matches.map((p,i)=>`<li role="option" data-id="${p.id}" aria-selected="${i===idx}"><span>${esc(p.name)}</span><span class="muted small">${p.pos} · ${p.team}</span></li>`).join('');
+      list.querySelectorAll('li').forEach(li=>li.onmousedown=()=>{ state.compare.push(li.dataset.id); render(); document.getElementById('addPlayer')?.focus(); }); };
+    add.addEventListener('input',show);
+    add.addEventListener('keydown',e=>{ if(!matches.length) return; if(e.key==='ArrowDown'){idx=(idx+1)%matches.length;} else if(e.key==='ArrowUp'){idx=(idx-1+matches.length)%matches.length;} else if(e.key==='Enter'){ e.preventDefault(); state.compare.push(matches[idx].id); render(); document.getElementById('addPlayer')?.focus(); return;} else if(e.key==='Escape'){list.hidden=true;return;} else return; list.querySelectorAll('li').forEach((li,i)=>li.setAttribute('aria-selected',i===idx)); });
+    add.addEventListener('blur',()=>setTimeout(()=>{list.hidden=true},150));
+  }
+  on('[data-remove]','click',e=>{ state.compare=state.compare.filter(x=>x!==e.currentTarget.dataset.remove); render(); });
+  // seasons
+  on('#seasonA','change',e=>{state.seasonA=+e.target.value; render();});
+  on('#seasonB','change',e=>{state.seasonB=+e.target.value; render();});
+  on('#swapSeasons','click',()=>{ [state.seasonA,state.seasonB]=[state.seasonB,state.seasonA]; render(); });
+  // league
+  on('#leagueId','input',e=>{state.leagueId=e.target.value;});
+  on('#leagueId','keydown',e=>{ if(e.key==='Enter') importSleeper(state.leagueId); });
+  on('#importSleeper','click',()=>importSleeper(state.leagueId));
+  on('#loadDemo','click',loadDemoLeague);
+  on('#importPaste','click',()=>importPaste(document.getElementById('pasteRosters').value));
+  on('[data-scope]','click',e=>{state.leagueScope=e.currentTarget.dataset.scope; render();});
+  const toggleTeam = id => { state.expanded = state.expanded===id?null:id; render(); };
+  on('tr[data-team]','click',e=>toggleTeam(+e.currentTarget.dataset.team));
+  on('tr[data-team]','keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); toggleTeam(+e.currentTarget.dataset.team);} });
+  // data
+  on('[data-w]','input',e=>{ state.weights[e.target.dataset.w]=+e.target.value; document.getElementById('w'+e.target.dataset.w+'v').textContent=e.target.value; });
+  on('[data-w]','change',()=>render());
+  on('[data-beta]','input',e=>{ state.beta=+e.target.value; document.getElementById('wbetav').textContent=e.target.value; });
+  on('[data-beta]','change',()=>render());
+  on('[data-lrank]','click',e=>{ state.leagueRank=e.currentTarget.dataset.lrank; render(); });
+  on('#exportJson','click',()=>download('injury-ledger-dataset.json', JSON.stringify(PLAYERS.map(p=>({id:p.id,name:p.name,pos:p.pos,team:p.team,rookie:p.rookie,seasons:p.seasons})),null,1),'application/json'));
+  on('#exportCsv','click',()=>{ const rows=[['player_id','name','pos','team','season','adp_rank','adp_pick','gp','gm','q','d','o','ir','injuries','ppg','pts_lost','injury_load']]; PLAYERS.forEach(p=>Object.values(p.seasons).forEach(s=>rows.push([p.id,p.name,p.pos,p.team,s.season,s.adp?s.adp.rank:'',s.adp?s.adp.pick:'',s.gp,s.gm,s.listed.Q,s.listed.D,s.listed.O,s.listed.IR,s.injCount,s.ppg,s.ptsLost,score(s)]))); download('injury-ledger-player-seasons.csv', rows.map(r=>r.map(v=>/[",\n]/.test(String(v))?'"'+String(v).replace(/"/g,'""')+'"':v).join(',')).join('\n'),'text/csv'); });
+}
+
+/* ---- boot: load real dataset if available, else keep synthetic sample ---- */
+function applyDataset(ds){
+  const meta = ds.meta || {};
+  CURRENT_SEASON = meta.currentSeason || CURRENT_SEASON;
+  CURRENT_WEEK = meta.currentWeek != null ? meta.currentWeek : CURRENT_WEEK;
+  const start = meta.seasons && meta.seasons.length ? meta.seasons[0] : 2016;
+  SEASONS = []; for (let y = start; y <= CURRENT_SEASON; y++) SEASONS.push(y);
+  PLAYERS = (ds.players||[]).map(p=>{
+    const seasons = {};
+    Object.entries(p.seasons||{}).forEach(([y,s])=>{ s.season = +y; s.nWeeks = s.nWeeks || s.weeks.length; seasons[+y] = summarize(s); });
+    const cur = p.current && p.current.status ? p.current : {status:'H', inj:null};
+    return {...p, id:String(p.id), seasons, current: cur};
+  }).filter(p=>Object.keys(p.seasons).length);
+  BY_ID = Object.fromEntries(PLAYERS.map(p=>[p.id,p]));
+  DATA_SOURCE = (meta.source ? 'nflverse' : 'external') + (meta.generated ? ' · generated '+meta.generated.slice(0,10) : '') + (meta.scoring ? ' · '+meta.scoring.toUpperCase()+' scoring' : '');
+  state.seasonA = CURRENT_SEASON-1; state.seasonB = CURRENT_SEASON-2; state.season = String(CURRENT_SEASON);
+  state.compare = state.compare.filter(id=>BY_ID[id]); if (!state.compare.length) state.compare = PLAYERS.slice().sort((a,b)=>aggregate(b,SEASONS).score-aggregate(a,SEASONS).score).slice(0,2).map(p=>p.id);
+}
+async function boot(){
+  render();
+  const url = new URLSearchParams(location.search).get('data') || 'dataset.json';
+  try{
+    if (location.protocol==='file:' && !new URLSearchParams(location.search).get('data')) return; // browsers block fetch() of local files; use ?data= with a hosted URL or run a local server
+    const r = await fetch(url, {cache:'no-store'}); if (!r.ok) return;
+    const ds = await r.json(); if (!ds || !Array.isArray(ds.players)) return;
+    applyDataset(ds); render();
+  }catch(e){ /* no dataset available: keep sample data */ }
+}
+boot();
+</script>
+</body>
+</html>
